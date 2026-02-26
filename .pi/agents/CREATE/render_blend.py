@@ -366,20 +366,46 @@ import os
 
 bpy.ops.wm.open_mainfile(filepath=r"{blend_path}")
 
-def find_saved_viewport():
-    selected = None
-    selected_size = -1
+def iter_screen_candidates():
+    seen = set()
+
+    # 1) Prefer the screen saved as active on each window manager window.
+    for wm in bpy.data.window_managers:
+        for window in wm.windows:
+            screen = getattr(window, "screen", None)
+            if screen and screen.name not in seen:
+                seen.add(screen.name)
+                yield (screen, "window-active")
+
+    # 2) Then context screen/workspace (if available in background context).
+    ctx_screen = getattr(bpy.context, "screen", None)
+    if ctx_screen and ctx_screen.name not in seen:
+        seen.add(ctx_screen.name)
+        yield (ctx_screen, "context-screen")
+
+    ctx_workspace = getattr(bpy.context, "workspace", None)
+    if ctx_workspace:
+        for screen in ctx_workspace.screens:
+            if screen and screen.name not in seen:
+                seen.add(screen.name)
+                yield (screen, "context-workspace")
+
+    # 3) Finally, scan all remaining screens as fallback.
     for screen in bpy.data.screens:
+        if screen and screen.name not in seen:
+            seen.add(screen.name)
+            yield (screen, "fallback-any")
+
+def find_saved_viewport():
+    for screen, source in iter_screen_candidates():
         for area in screen.areas:
             if area.type != 'VIEW_3D':
                 continue
             area_size = max(1, area.width) * max(1, area.height)
             for space in area.spaces:
                 if space.type == 'VIEW_3D' and space.region_3d:
-                    if area_size > selected_size:
-                        selected = (space, space.region_3d, screen.name, area_size)
-                        selected_size = area_size
-    return selected
+                    return (space, space.region_3d, screen.name, area_size, source)
+    return None
 
 def setup_lighting():
     scene = bpy.context.scene
@@ -441,7 +467,7 @@ def run():
             "No saved VIEW_3D perspective found in the .blend file. "
             "Set the view in Blender, save the file, then retry."
         )
-    space, region_3d, screen_name, area_size = viewport
+    space, region_3d, screen_name, area_size, source = viewport
 
     if region_3d.view_perspective == 'CAMERA' and space.camera and space.camera.type == 'CAMERA':
         camera = space.camera
@@ -468,7 +494,7 @@ def run():
     filepath = os.path.join(output_dir, "render_current_view_camera.png")
     scene.render.filepath = filepath
     bpy.ops.render.render(write_still=True)
-    print("[CAMERA_ALIGNED] screen=" + str(screen_name) + " area_size=" + str(area_size) + " perspective=" + str(region_3d.view_perspective))
+    print("[CAMERA_ALIGNED] screen=" + str(screen_name) + " source=" + str(source) + " area_size=" + str(area_size) + " perspective=" + str(region_3d.view_perspective))
     print("[RENDER] current_view_camera -> " + filepath)
     print("[RENDER COMPLETE]")
 

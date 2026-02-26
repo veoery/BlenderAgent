@@ -160,20 +160,20 @@ If no saved viewport is found, ask the user to save the file in Blender and reru
 
 ## 5) Critique
 Evaluate iteration output on 0-10:
-- Accuracy (0-2)
-- Geometry & Proportions (0-2)
-- Materials & Appearance (0-2)
-- Completeness (0-2)
-- Quality (0-2)
+**1. Accuracy (0-2)**: Does the result match the request/reference?
+**2. Geometry & Proportions (0-2)**: Realistic dimensions, parts fit together?
+**3. Materials & Appearance (0-2)**: Correct colors, surface finish?
+**4. Completeness (0-2)**: All components present, nothing missing?
+**5. Quality (0-2)**: Clean geometry, proper shading, no artifacts?
 
 Append an entry to `$session_dir/critique.log` with score, issues, and next action.
 
 Decision policy:
-- 8-10: present
-- 5-7 and iteration < 3: iterate
-- 5-7 and iteration >= 3: present
-- 0-4 and iteration < 5: iterate
-- 0-4 and iteration >= 5: present with limitations
+- **8-10**: Present to user
+- **5-7 and iteration < 3**: Iterate (fix 1-2 issues)
+- **5-7 and iteration >= 3**: Present (good enough)
+- **0-4 and iteration < 5**: Iterate (significant fixes)
+- **0-4 and iteration >= 5**: Present with limitations explained
 
 ## 6) Iterate or finalize
 If iterating:
