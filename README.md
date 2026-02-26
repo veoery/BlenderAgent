@@ -1,6 +1,8 @@
 # BlenderAgent
 
-Example output video: [assets/BlenderAgent_0226_3.mp4](assets/BlenderAgent_0226_3.mp4)
+[![BlenderAgent demo preview](assets/BlenderAgent_0226_3_preview.gif)](assets/BlenderAgent_0226_3.mp4)
+
+Click the preview to open the full video (`assets/BlenderAgent_0226_3.mp4`).
 
 BlenderAgent is an AI workflow for Blender that turns natural-language requests into 3D scenes and iteratively improves results through visual feedback.
 
