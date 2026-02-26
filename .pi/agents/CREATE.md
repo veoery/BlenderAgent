@@ -16,12 +16,18 @@ Non-negotiable rules:
 2. Write all artifacts only inside the workspace.
 3. Never modify any original user file in place.
 4. Separate execution and rendering into two distinct steps.
+5. On follow-up runs, reuse the exact prior workspace. Never guess a workspace.
 
 If the request is clearly not CREATE-mode (for example requires editing an existing `.blend`), return a short handoff note saying CREATE mode is not the correct agent.
 
 Workflow:
 
 ## 0) Workspace
+Workspace selection protocol:
+- New task: create a new workspace.
+- Follow-up task (for example "continue", "go on", "iterate", "render now"): require `workspace=<path>` in the delegated task text.
+- If follow-up task does not include `workspace=...`, STOP and ask for it. Do not infer from folder timestamps.
+
 Create a workspace folder:
 
 ```bash
@@ -50,6 +56,7 @@ Create:
 - `$session_dir/model.blend` (created/updated by execute step)
 
 Record the delegated task in `prompt.txt`.
+When returning results, always include the exact workspace path so main agent can pass it into the next subagent call.
 
 Folder structure example:
 
@@ -133,16 +140,23 @@ cp "$session_dir/full_script.py" "$session_dir/iteration_XX/full_script.py"
 ```
 
 ## 4) Render (visual verification)
-Render the generated blend in a separate command:
+After each execute step, PAUSE and ask the user to set the render perspective in Blender:
+- Ask: `Please set the perspective in Blender now (orbit/pan/zoom), save model.blend, then reply "render".`
+- Do not offer a perspective list. Read the saved current view perspective directly from the `.blend` file.
+- Wait for user confirmation before rendering.
+
+Then render the generated blend:
 
 ```bash
 BLENDER_PATH="/Applications/Blender.app/Contents/MacOS/Blender" \
 "$PYTHON_BIN" .pi/agents/CREATE/render_blend.py \
   "$session_dir/model.blend" \
-  "$session_dir/iteration_XX"
+  "$session_dir/iteration_XX" \
+  --mode current-view
 ```
 
-Use default 4-view rendering for CREATE-mode unless the delegated task explicitly requires camera-based output. This updates files under `$session_dir/iteration_XX/renders/`.
+This aligns a camera to the saved current viewport (equivalent to "Align Active Camera to View"), then renders camera output to `$session_dir/iteration_XX/renders/render_current_view_camera.png`.
+If no saved viewport is found, ask the user to save the file in Blender and rerun render.
 
 ## 5) Critique
 Evaluate iteration output on 0-10:
@@ -165,6 +179,8 @@ Decision policy:
 If iterating:
 - Update only what failed in critique.
 - Re-run execute + render + critique.
+- Return a continuation instruction containing the workspace path:
+  `Continue with workspace=<session_dir>`
 
 If finalizing:
 - Keep the current `$session_dir/model.blend` as the final output (no per-iteration copy folders).
@@ -177,12 +193,15 @@ CREATE
 ## Workspace
 `<session_dir>`
 
+## Continue With
+`workspace=<session_dir>`
+
 ## Result
 One concise paragraph describing what was generated.
 
 ## Artifacts
 - `<session_dir>/model.blend`
-- `<session_dir>/iteration_XX/renders/grid_4view.png`
+- `<session_dir>/iteration_XX/renders/render_current_view_camera.png`
 - `<session_dir>/critique.log`
 - `<session_dir>/script.py`
 

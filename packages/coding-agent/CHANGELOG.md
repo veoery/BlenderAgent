@@ -5,6 +5,12 @@
 ### Added
 
 - Added Blender auto-launch for the `vibe-blender` CLI name. On interactive startup, the CLI now launches Blender from `BLENDER_PATH` (default: `/Applications/Blender.app/Contents/MacOS/Blender`) alongside the coding agent. Disable auto-launch with `--no-blender` or `VIBE_BLENDER_NO_BLENDER=1`.
+- Added `PI_SUBAGENT_COMMAND` support in the subagent extension example to choose which CLI command is used for delegated subagent runs (supports comma-separated fallback commands).
+
+### Fixed
+
+- Fixed subagent extension example startup for rebranded CLIs by trying fallback commands (`pi`, then `vibe-blender`) when launching delegated subagents.
+- Fixed `--no-blender` behavior to propagate `VIBE_BLENDER_NO_BLENDER=1` to child processes so downstream tools and subagents can consistently detect no-blender mode.
 
 ## [0.55.1] - 2026-02-26
 

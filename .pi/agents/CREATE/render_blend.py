@@ -6,11 +6,13 @@ This is the ONLY rendering tool — always use this after executing a script.
 Render modes:
   - default: 4-view orthographic grid (front/top/side/iso) + optional turntable GIF
   - cameras: Render from cameras in the .blend file (all or specific ones via --cameras)
+  - current-view: Render from the saved 3D viewport perspective in the .blend file
 
 The model should choose the mode based on context:
   - Use "default" for general-purpose inspection (newly created models, checking edits, analysis)
   - Use "cameras" when the scene has intentionally placed cameras (e.g. architectural renders,
     animation setups) and you want to see the scene from the artist's intended viewpoints
+  - Use "current-view" when the user has set a specific viewport perspective and saved the file
 
 Usage:
     # 4-view grid (default)
@@ -24,6 +26,9 @@ Usage:
 
     # Specific cameras only
     python render_blend.py <blend_path> <output_dir> --mode cameras --cameras "Camera,Camera.001"
+
+    # Saved current viewport perspective
+    python render_blend.py <blend_path> <output_dir> --mode current-view
 
 Environment Variables:
     BLENDER_PATH: Path to Blender executable (default: "blender")
@@ -44,9 +49,9 @@ def main():
     parser.add_argument("output_dir", type=Path, help="Output directory for renders")
     parser.add_argument(
         "--mode",
-        choices=["default", "cameras"],
+        choices=["default", "cameras", "current-view"],
         default="default",
-        help="Render mode: default (4-view grid), cameras (scene cameras)",
+        help="Render mode: default (4-view grid), cameras (scene cameras), current-view (saved viewport)",
     )
     parser.add_argument(
         "--cameras",
@@ -94,6 +99,10 @@ def main():
         camera_list = [c.strip() for c in args.cameras.split(",") if c.strip()]
         render_script = build_camera_render_script(
             args.blend_path, render_dir, camera_list, args.resolution, args.samples
+        )
+    elif args.mode == "current-view":
+        render_script = build_current_view_render_script(
+            args.blend_path, render_dir, args.resolution, args.samples
         )
 
     # Write and execute
@@ -342,6 +351,125 @@ def run():
         bpy.ops.render.render(write_still=True)
         print(f"[RENDER] {{cam_name}} -> {{filepath}}")
 
+    print("[RENDER COMPLETE]")
+
+run()
+'''
+
+
+def build_current_view_render_script(blend_path, render_dir, resolution, samples):
+    """Build a script that aligns camera to saved viewport and renders camera output."""
+    return f'''# Render script (current saved viewport) - {datetime.now().isoformat()}
+import bpy
+import math
+import os
+
+bpy.ops.wm.open_mainfile(filepath=r"{blend_path}")
+
+def find_saved_viewport():
+    selected = None
+    selected_size = -1
+    for screen in bpy.data.screens:
+        for area in screen.areas:
+            if area.type != 'VIEW_3D':
+                continue
+            area_size = max(1, area.width) * max(1, area.height)
+            for space in area.spaces:
+                if space.type == 'VIEW_3D' and space.region_3d:
+                    if area_size > selected_size:
+                        selected = (space, space.region_3d, screen.name, area_size)
+                        selected_size = area_size
+    return selected
+
+def setup_lighting():
+    scene = bpy.context.scene
+    # Add fallback lights only when nothing renderable exists.
+    existing_lights = [obj for obj in scene.objects if obj.type == 'LIGHT' and not obj.hide_render]
+    if not existing_lights:
+        key_data = bpy.data.lights.new(name="KeyLight", type='SUN')
+        key_data.energy = 3.0
+        key_obj = bpy.data.objects.new("KeyLight", key_data)
+        scene.collection.objects.link(key_obj)
+        key_obj.rotation_euler = (math.radians(45), math.radians(30), 0)
+
+        fill_data = bpy.data.lights.new(name="FillLight", type='SUN')
+        fill_data.energy = 1.5
+        fill_obj = bpy.data.objects.new("FillLight", fill_data)
+        scene.collection.objects.link(fill_obj)
+        fill_obj.rotation_euler = (math.radians(45), math.radians(-60), 0)
+
+        rim_data = bpy.data.lights.new(name="RimLight", type='SUN')
+        rim_data.energy = 2.0
+        rim_obj = bpy.data.objects.new("RimLight", rim_data)
+        scene.collection.objects.link(rim_obj)
+        rim_obj.rotation_euler = (math.radians(-30), math.radians(180), 0)
+
+    # Keep renders readable even if viewport was in Solid/Studio lighting.
+    world = scene.world
+    if world is None:
+        world = bpy.data.worlds.new("World")
+        scene.world = world
+    world.use_nodes = True
+    bg = world.node_tree.nodes.get("Background")
+    if bg:
+        strength = float(bg.inputs["Strength"].default_value)
+        bg.inputs["Strength"].default_value = max(strength, 0.8)
+    scene.view_settings.exposure = max(float(scene.view_settings.exposure), 0.8)
+
+def run():
+    output_dir = r"{render_dir}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    scene = bpy.context.scene
+    scene.render.engine = 'CYCLES'
+    scene.cycles.samples = {samples}
+    scene.cycles.use_denoising = True
+    try:
+        scene.cycles.device = 'GPU'
+    except:
+        scene.render.engine = 'BLENDER_EEVEE_NEXT'
+
+    setup_lighting()
+
+    scene.render.resolution_x = {resolution[0]}
+    scene.render.resolution_y = {resolution[1]}
+    scene.render.image_settings.file_format = 'PNG'
+
+    viewport = find_saved_viewport()
+    if not viewport:
+        raise RuntimeError(
+            "No saved VIEW_3D perspective found in the .blend file. "
+            "Set the view in Blender, save the file, then retry."
+        )
+    space, region_3d, screen_name, area_size = viewport
+
+    if region_3d.view_perspective == 'CAMERA' and space.camera and space.camera.type == 'CAMERA':
+        camera = space.camera
+    else:
+        if scene.camera and scene.camera.type == 'CAMERA':
+            camera = scene.camera
+        else:
+            cam_data = bpy.data.cameras.new(name="CurrentViewCameraData")
+            camera = bpy.data.objects.new("CurrentViewCamera", cam_data)
+            scene.collection.objects.link(camera)
+
+    # Equivalent to "Align Active Camera to View": camera transform follows saved RegionView3D view matrix.
+    camera.matrix_world = region_3d.view_matrix.inverted()
+
+    if region_3d.view_perspective == 'ORTHO':
+        camera.data.type = 'ORTHO'
+        camera.data.ortho_scale = max(0.1, float(region_3d.view_distance) * 2.0)
+    else:
+        camera.data.type = 'PERSP'
+        if hasattr(space, 'lens'):
+            camera.data.lens = space.lens
+
+    scene.camera = camera
+    filepath = os.path.join(output_dir, "render_current_view_camera.png")
+    scene.render.filepath = filepath
+    bpy.ops.render.render(write_still=True)
+    print("[CAMERA_ALIGNED] screen=" + str(screen_name) + " area_size=" + str(area_size) + " perspective=" + str(region_3d.view_perspective))
+    print("[RENDER] current_view_camera -> " + filepath)
     print("[RENDER COMPLETE]")
 
 run()
