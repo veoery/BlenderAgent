@@ -1,7 +1,7 @@
 /**
  * Subagent Tool - Delegate tasks to specialized agents
  *
- * Spawns a separate `pi` process for each subagent invocation,
+ * Spawns a separate CLI process for each subagent invocation,
  * giving it an isolated context window.
  *
  * Supports three modes:
@@ -27,6 +27,23 @@ import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.js";
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
+const DEFAULT_SUBAGENT_COMMANDS = ["pi", "vibe-blender"];
+
+function parseCommandList(value: string): string[] {
+	return value
+		.split(",")
+		.map((item) => item.trim())
+		.filter((item) => item.length > 0);
+}
+
+function getSubagentCommands(): string[] {
+	const explicitCommands = process.env.PI_SUBAGENT_COMMAND;
+	if (explicitCommands) {
+		const parsed = parseCommandList(explicitCommands);
+		if (parsed.length > 0) return parsed;
+	}
+	return DEFAULT_SUBAGENT_COMMANDS;
+}
 
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
@@ -282,10 +299,19 @@ async function runSingleAgent(
 
 		args.push(`Task: ${task}`);
 		let wasAborted = false;
+		const commands = getSubagentCommands();
 
 		const exitCode = await new Promise<number>((resolve) => {
-			const proc = spawn("pi", args, { cwd: cwd ?? defaultCwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
 			let buffer = "";
+			let settled = false;
+			let commandIndex = 0;
+			let activeProc: ReturnType<typeof spawn> | null = null;
+
+			const finish = (code: number) => {
+				if (settled) return;
+				settled = true;
+				resolve(code);
+			};
 
 			const processLine = (line: string) => {
 				if (!line.trim()) return;
@@ -324,37 +350,61 @@ async function runSingleAgent(
 				}
 			};
 
-			proc.stdout.on("data", (data) => {
-				buffer += data.toString();
-				const lines = buffer.split("\n");
-				buffer = lines.pop() || "";
-				for (const line of lines) processLine(line);
-			});
+			const trySpawn = () => {
+				const command = commands[commandIndex];
+				const proc = spawn(command, args, {
+					cwd: cwd ?? defaultCwd,
+					shell: false,
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+				activeProc = proc;
 
-			proc.stderr.on("data", (data) => {
-				currentResult.stderr += data.toString();
-			});
+				proc.stdout.on("data", (data) => {
+					buffer += data.toString();
+					const lines = buffer.split("\n");
+					buffer = lines.pop() || "";
+					for (const line of lines) processLine(line);
+				});
 
-			proc.on("close", (code) => {
-				if (buffer.trim()) processLine(buffer);
-				resolve(code ?? 0);
-			});
+				proc.stderr.on("data", (data) => {
+					currentResult.stderr += data.toString();
+				});
 
-			proc.on("error", () => {
-				resolve(1);
-			});
+				proc.on("close", (code) => {
+					if (buffer.trim()) processLine(buffer);
+					finish(code ?? 0);
+				});
+
+				proc.on("error", (error: NodeJS.ErrnoException) => {
+					const canRetry = error.code === "ENOENT" && commandIndex + 1 < commands.length;
+					if (canRetry) {
+						commandIndex++;
+						trySpawn();
+						return;
+					}
+
+					const errorCode = error.code ? ` (${error.code})` : "";
+					currentResult.stderr += `Failed to launch subagent command "${command}"${errorCode}: ${error.message}\n`;
+					if (commandIndex > 0) {
+						currentResult.stderr += `Commands attempted: ${commands.slice(0, commandIndex + 1).join(", ")}\n`;
+					}
+					finish(1);
+				});
+			};
 
 			if (signal) {
 				const killProc = () => {
 					wasAborted = true;
-					proc.kill("SIGTERM");
+					activeProc?.kill("SIGTERM");
 					setTimeout(() => {
-						if (!proc.killed) proc.kill("SIGKILL");
+						if (activeProc && !activeProc.killed) activeProc.kill("SIGKILL");
 					}, 5000);
 				};
 				if (signal.aborted) killProc();
 				else signal.addEventListener("abort", killProc, { once: true });
 			}
+
+			trySpawn();
 		});
 
 		currentResult.exitCode = exitCode;

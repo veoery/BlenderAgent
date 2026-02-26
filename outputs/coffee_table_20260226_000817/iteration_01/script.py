@@ -1,0 +1,117 @@
+import bpy
+import math
+
+# Clear scene
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete()
+
+def create_material(name, color, roughness=0.5, metallic=0.0):
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    bsdf = nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs['Base Color'].default_value = color
+        bsdf.inputs['Roughness'].default_value = roughness
+        bsdf.inputs['Metallic'].default_value = metallic
+    return mat
+
+# Materials
+wood_mat = create_material("Wood", (0.3, 0.15, 0.05, 1.0), roughness=0.8)
+metal_mat = create_material("BlackMetal", (0.05, 0.05, 0.05, 1.0), roughness=0.2, metallic=1.0)
+
+# Table Top
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.375))
+table_top = bpy.context.active_object
+table_top.name = "TableTop"
+table_top.scale = (1.2, 0.6, 0.05)
+table_top.data.materials.append(wood_mat)
+bpy.ops.object.transform_apply(scale=True)
+
+# Legs
+def create_leg(x_pos):
+    # Leg Horizontal piece (bottom)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0, 0.025))
+    leg_base = bpy.context.active_object
+    leg_base.scale = (0.05, 0.6, 0.05)
+    leg_base.data.materials.append(metal_mat)
+    
+    # Leg Vertical 1
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0.275, 0.2))
+    v1 = bpy.context.active_object
+    v1.scale = (0.05, 0.05, 0.35)
+    v1.data.materials.append(metal_mat)
+    
+    # Leg Vertical 2
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, -0.275, 0.2))
+    v2 = bpy.context.active_object
+    v2.scale = (0.05, 0.05, 0.35)
+    v2.data.materials.append(metal_mat)
+
+# U-Shaped Leg (better design for modern)
+def create_u_leg(x_pos):
+    # Width of leg is 0.6m
+    # Height is 0.35m
+    # Thickness is 0.04m
+    
+    # Bottom
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0, 0.02))
+    bot = bpy.context.active_object
+    bot.scale = (0.04, 0.6, 0.04)
+    bot.data.materials.append(metal_mat)
+    
+    # Side 1
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0.28, 0.175))
+    s1 = bpy.context.active_object
+    s1.scale = (0.04, 0.04, 0.35)
+    s1.data.materials.append(metal_mat)
+
+    # Side 2
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, -0.28, 0.175))
+    s2 = bpy.context.active_object
+    s2.scale = (0.04, 0.04, 0.35)
+    s2.data.materials.append(metal_mat)
+
+# Instead of separate cubes, let's use a cleaner method if possible, 
+# but for simplicity in script, cubes are fine. 
+# Let's do two simple rectangular frames.
+
+def create_frame_leg(x_pos):
+    # Top bar (hidden under table)
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0, 0.34))
+    t = bpy.context.active_object
+    t.scale = (0.04, 0.6, 0.02)
+    t.data.materials.append(metal_mat)
+    
+    # Bottom bar
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0, 0.02))
+    b = bpy.context.active_object
+    b.scale = (0.04, 0.6, 0.02)
+    b.data.materials.append(metal_mat)
+    
+    # Left vertical
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, 0.29, 0.18))
+    vL = bpy.context.active_object
+    vL.scale = (0.04, 0.02, 0.34)
+    vL.data.materials.append(metal_mat)
+    
+    # Right vertical
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x_pos, -0.29, 0.18))
+    vR = bpy.context.active_object
+    vR.scale = (0.04, 0.02, 0.34)
+    vR.data.materials.append(metal_mat)
+
+create_frame_leg(0.45)
+create_frame_leg(-0.45)
+
+# Floor plane for shadow/context
+bpy.ops.mesh.primitive_plane_add(size=10, location=(0, 0, 0))
+floor = bpy.context.active_object
+floor.name = "Floor"
+floor_mat = create_material("FloorMat", (0.8, 0.8, 0.8, 1.0), roughness=1.0)
+floor.data.materials.append(floor_mat)
+
+# Save
+import os
+output_path = os.environ.get("OUTPUT_BLEND_PATH", "model.blend")
+bpy.ops.wm.save_as_mainfile(filepath=output_path)

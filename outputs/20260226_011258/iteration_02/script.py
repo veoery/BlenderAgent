@@ -1,0 +1,65 @@
+import bpy
+import math
+
+# Constants
+OUTPUT_BLEND_PATH = "outputs/20260226_011258/model.blend"
+
+# Clear scene
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete()
+
+def create_material(name, color, metallic=0.0, roughness=0.5):
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+    nodes = mat.node_tree.nodes
+    bsdf = nodes.get("Principled BSDF")
+    bsdf.inputs['Base Color'].default_value = color
+    bsdf.inputs['Metallic'].default_value = metallic
+    bsdf.inputs['Roughness'].default_value = roughness
+    return mat
+
+# Materials
+wood_mat = create_material("Wood", (0.1, 0.05, 0.02, 1.0), roughness=0.8)
+metal_mat = create_material("Metal", (0.02, 0.02, 0.02, 1.0), metallic=1.0, roughness=0.2)
+
+# Table Top
+bpy.ops.mesh.primitive_cube_add(size=1, location=(0, 0, 0.425))
+table_top = bpy.context.active_object
+table_top.name = "TableTop"
+table_top.scale = (1.2, 0.6, 0.05)
+bpy.ops.object.transform_apply(scale=True)
+table_top.data.materials.append(wood_mat)
+
+# Add bevel to top
+bevel_mod = table_top.modifiers.new(name="Bevel", type='BEVEL')
+bevel_mod.width = 0.005
+bevel_mod.segments = 3
+
+# Legs
+leg_width = 0.03
+leg_height = 0.4
+leg_offset_x = 0.52
+leg_offset_y = 0.22
+
+leg_positions = [
+    (leg_offset_x, leg_offset_y),
+    (-leg_offset_x, leg_offset_y),
+    (leg_offset_x, -leg_offset_y),
+    (-leg_offset_x, -leg_offset_y)
+]
+
+for i, (x, y) in enumerate(leg_positions):
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(x, y, leg_height / 2))
+    leg = bpy.context.active_object
+    leg.name = f"Leg_{i}"
+    leg.scale = (leg_width, leg_width, leg_height)
+    bpy.ops.object.transform_apply(scale=True)
+    leg.data.materials.append(metal_mat)
+    
+    # Add bevel to legs
+    leg_bevel = leg.modifiers.new(name="Bevel", type='BEVEL')
+    leg_bevel.width = 0.002
+    leg_bevel.segments = 2
+
+# Save
+bpy.ops.wm.save_as_mainfile(filepath=OUTPUT_BLEND_PATH)

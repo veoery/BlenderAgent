@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Blender auto-launch for the `vibe-blender` CLI name. On interactive startup, the CLI now launches Blender from `BLENDER_PATH` (default: `/Applications/Blender.app/Contents/MacOS/Blender`) alongside the coding agent. Disable auto-launch with `--no-blender` or `VIBE_BLENDER_NO_BLENDER=1`.
+
 ## [0.55.1] - 2026-02-26
 
 ### New Features

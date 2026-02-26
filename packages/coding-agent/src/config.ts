@@ -168,8 +168,12 @@ export const APP_NAME: string = pkg.piConfig?.name || "pi";
 export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".pi";
 export const VERSION: string = pkg.version;
 
-// e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
-export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
+// e.g., PI_CODING_AGENT_DIR or VIBE_BLENDER_CODING_AGENT_DIR
+const APP_ENV_PREFIX =
+	APP_NAME.toUpperCase()
+		.replace(/[^A-Z0-9]/g, "_")
+		.replace(/^_+|_+$/g, "") || "PI";
+export const ENV_AGENT_DIR = `${APP_ENV_PREFIX}_CODING_AGENT_DIR`;
 
 const DEFAULT_SHARE_VIEWER_URL = "https://pi.dev/session/";
 

@@ -54,7 +54,19 @@ done
 
 ## Security Model
 
-This tool executes a separate `pi` subprocess with a delegated system prompt and tool/model configuration.
+This tool executes a separate CLI subprocess with a delegated system prompt and tool/model configuration.
+
+By default it tries `pi`, then `vibe-blender`. To override, set:
+
+```bash
+export PI_SUBAGENT_COMMAND="vibe-blender"
+```
+
+You can provide multiple comma-separated commands:
+
+```bash
+export PI_SUBAGENT_COMMAND="custom-pi,pi,vibe-blender"
+```
 
 **Project-local agents** (`.pi/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
 
