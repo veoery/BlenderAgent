@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { access, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { execCommand } from "../core/exec.js";
 const DEFAULT_BLENDER_PATH = "/Applications/Blender.app/Contents/MacOS/Blender";
 const MANIFEST_FILE = "blender-workspace.json";
 const WORKSPACE_SCRIPT_FILE = "script.py";
+const CRITIQUE_LOG_FILE = "critique.log";
 const DEFAULT_RENDER_EXTENSION = ".png";
 
 export interface BlenderSavedView {
@@ -144,6 +145,37 @@ export interface RenderResult {
 	mode: string;
 }
 
+export interface CritiqueLogOptions {
+	cwd: string;
+	workspace: string;
+	iteration?: number;
+	accuracy: number;
+	geometry: number;
+	materials: number;
+	completeness: number;
+	quality: number;
+	issues: string[];
+	nextAction: string;
+}
+
+export interface CritiqueLogResult {
+	workspacePath: string;
+	critiqueLogPath: string;
+	entry: {
+		iteration: number;
+		score: number;
+		accuracy: number;
+		geometry: number;
+		materials: number;
+		completeness: number;
+		quality: number;
+		issues: string[];
+		nextAction: string;
+		loggedAt: string;
+		shouldPresent: boolean;
+	};
+}
+
 interface BlenderRunResult {
 	stdout: string;
 	stderr: string;
@@ -185,6 +217,10 @@ function getManifestPath(workspacePath: string): string {
 
 function getWorkspaceScriptPath(workspacePath: string): string {
 	return join(workspacePath, WORKSPACE_SCRIPT_FILE);
+}
+
+function getWorkspaceCritiqueLogPath(workspacePath: string): string {
+	return join(workspacePath, CRITIQUE_LOG_FILE);
 }
 
 function normalizeWorkspacePath(cwd: string, workspace?: string): string {
@@ -232,6 +268,14 @@ async function ensureWorkspaceScriptExists(workspacePath: string): Promise<strin
 	return scriptPath;
 }
 
+async function ensureWorkspaceCritiqueLogExists(workspacePath: string): Promise<string> {
+	const critiqueLogPath = getWorkspaceCritiqueLogPath(workspacePath);
+	if (!(await fileExists(critiqueLogPath))) {
+		await writeFile(critiqueLogPath, "", "utf-8");
+	}
+	return critiqueLogPath;
+}
+
 async function createBlankBlend(blendPath: string, cwd: string, signal?: AbortSignal): Promise<void> {
 	const script = `
 import bpy
@@ -263,6 +307,7 @@ async function ensureWorkspaceInitialized(options: WorkspaceInitOptions): Promis
 	const existingManifest = await readManifest(workspacePath);
 	if (existingManifest) {
 		await ensureWorkspaceScriptExists(workspacePath);
+		await ensureWorkspaceCritiqueLogExists(workspacePath);
 		return {
 			workspacePath,
 			blendPath: existingManifest.blendPath,
@@ -301,6 +346,7 @@ async function ensureWorkspaceInitialized(options: WorkspaceInitOptions): Promis
 	};
 	await writeManifest(manifest);
 	await ensureWorkspaceScriptExists(workspacePath);
+	await ensureWorkspaceCritiqueLogExists(workspacePath);
 
 	return {
 		workspacePath,
@@ -795,5 +841,62 @@ export async function blenderRender(options: RenderOptions): Promise<RenderResul
 		view,
 		resolution: renderPayload.resolution,
 		mode: options.mode ?? "still",
+	};
+}
+
+function validateCritiqueScore(name: string, value: number): void {
+	if (!Number.isFinite(value) || value < 0 || value > 2) {
+		throw new Error(`Critique score "${name}" must be a number between 0 and 2.`);
+	}
+}
+
+export async function blenderLogCritique(options: CritiqueLogOptions): Promise<CritiqueLogResult> {
+	validateCritiqueScore("accuracy", options.accuracy);
+	validateCritiqueScore("geometry", options.geometry);
+	validateCritiqueScore("materials", options.materials);
+	validateCritiqueScore("completeness", options.completeness);
+	validateCritiqueScore("quality", options.quality);
+
+	const manifest = await loadWorkspaceManifest(options.cwd, options.workspace);
+	const critiqueLogPath = await ensureWorkspaceCritiqueLogExists(manifest.workspacePath);
+	const iteration = options.iteration ?? manifest.latestIteration;
+	const score = options.accuracy + options.geometry + options.materials + options.completeness + options.quality;
+	const loggedAt = nowIso();
+	const shouldPresent = score >= 8;
+	const entry = {
+		iteration,
+		score,
+		accuracy: options.accuracy,
+		geometry: options.geometry,
+		materials: options.materials,
+		completeness: options.completeness,
+		quality: options.quality,
+		issues: options.issues,
+		nextAction: options.nextAction,
+		loggedAt,
+		shouldPresent,
+	};
+
+	const logBlock = [
+		`[${loggedAt}] iteration_${String(iteration).padStart(2, "0")}`,
+		`Score: ${score}/10`,
+		`Accuracy: ${options.accuracy}/2`,
+		`Geometry & Proportions: ${options.geometry}/2`,
+		`Materials & Appearance: ${options.materials}/2`,
+		`Completeness: ${options.completeness}/2`,
+		`Quality: ${options.quality}/2`,
+		"Issues:",
+		...(options.issues.length > 0 ? options.issues.map((issue) => `- ${issue}`) : ["- none"]),
+		`Next action: ${options.nextAction}`,
+		shouldPresent ? "Decision: present to user" : "Decision: continue iterating",
+		"",
+	].join("\n");
+
+	await appendFile(critiqueLogPath, logBlock, "utf-8");
+
+	return {
+		workspacePath: manifest.workspacePath,
+		critiqueLogPath,
+		entry,
 	};
 }

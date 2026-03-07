@@ -24,6 +24,7 @@ When you start `vibe-blender`, these Blender tools are loaded automatically:
 - `blender_scene_info`
 - `blender_save_view`
 - `blender_render`
+- `blender_log_critique`
 
 Generic coding tools such as `read`, `edit`, `write`, `grep`, `find`, `ls`, and `bash` remain available for logs, manifests, and generated scripts.
 
@@ -31,10 +32,10 @@ Generic coding tools such as `read`, `edit`, `write`, `grep`, `find`, `ls`, and 
 
 The bundled Blender extension also provides these skills:
 
-- `/skill:create`
-- `/skill:edit`
-- `/skill:analyze`
-- `/skill:with-reference`
+- `/skill:blender-create`
+- `/skill:blender-edit`
+- `/skill:blender-analyze`
+- `/skill:blender-with-reference`
 
 These skills add workflow guidance. The actual scene work still happens through Blender tools.
 
@@ -75,7 +76,7 @@ vibe-blender
 Example prompts:
 
 ```text
-Use /skill:create and build a modern coffee table in Blender.
+Use /skill:blender-create and build a modern coffee table in Blender.
 ```
 
 ```text
@@ -83,11 +84,11 @@ Initialize a workspace and create a stylized desk lamp in Blender.
 ```
 
 ```text
-Use /skill:edit with workspace=outputs/20260306_120000 and make the lamp shade wider.
+Use /skill:blender-edit with workspace=outputs/20260306_120000 and make the lamp shade wider.
 ```
 
 ```text
-Use /skill:analyze with workspace=outputs/20260306_120000 and tell me which objects and materials are present.
+Use /skill:blender-analyze with workspace=outputs/20260306_120000 and tell me which objects and materials are present.
 ```
 
 ## Workspace model
@@ -99,6 +100,7 @@ Typical structure:
 ```text
 outputs/TIMESTAMP/
 ├── blender-workspace.json
+├── critique.log
 ├── model.blend
 ├── script.py
 └── iteration_01/
@@ -109,6 +111,7 @@ outputs/TIMESTAMP/
 ```
 
 The workspace root `script.py` is the canonical current Blender script. Each execution updates that file first, then snapshots it into the current `iteration_XX/` folder before running.
+The workspace root `critique.log` stores the render critique for each create/edit iteration.
 
 ## Design principles
 

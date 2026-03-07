@@ -3,6 +3,7 @@ import { APP_NAME } from "../config.js";
 import type { ExtensionFactory } from "../core/extensions/index.js";
 import {
 	blenderExecutePython,
+	blenderLogCritique,
 	blenderRender,
 	blenderSaveView,
 	blenderSceneInfo,
@@ -15,6 +16,7 @@ const BLENDER_WORKFLOW_GUIDANCE = [
 	"Prefer Blender tools over generic shell/file workflows for scene creation, editing, inspection, and rendering.",
 	"Keep the `workspace` argument explicit in every Blender tool call and reuse the same workspace across continuation turns.",
 	"Inspect before mutating when editing an existing scene, and render after meaningful scene changes that need visual verification.",
+	"For create and edit work, use a short ReAct loop: execute, render, critique, log the critique, then either stop when the result is good enough or iterate. Do at most 5 iterations for each new user instruction.",
 	"Do not restate tool schemas in prose. Use the tool definitions directly.",
 ].join(" ");
 
@@ -249,6 +251,75 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					outputName: params.outputName,
 					mode: params.mode,
 					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.registerTool({
+			name: "blender_log_critique",
+			label: "Blender Log Critique",
+			description:
+				"Append a structured critique entry to the workspace critique.log using the 0-10 Blender iteration rubric.",
+			parameters: Type.Object({
+				workspace: Type.String({
+					description: "Explicit workspace path for the Blender task.",
+				}),
+				iteration: Type.Optional(
+					Type.Number({
+						description: "Optional iteration number. Defaults to the current workspace iteration.",
+					}),
+				),
+				accuracy: Type.Number({
+					description: "Accuracy score from 0 to 2.",
+					minimum: 0,
+					maximum: 2,
+				}),
+				geometry: Type.Number({
+					description: "Geometry and proportions score from 0 to 2.",
+					minimum: 0,
+					maximum: 2,
+				}),
+				materials: Type.Number({
+					description: "Materials and appearance score from 0 to 2.",
+					minimum: 0,
+					maximum: 2,
+				}),
+				completeness: Type.Number({
+					description: "Completeness score from 0 to 2.",
+					minimum: 0,
+					maximum: 2,
+				}),
+				quality: Type.Number({
+					description: "Quality score from 0 to 2.",
+					minimum: 0,
+					maximum: 2,
+				}),
+				issues: Type.Array(
+					Type.String({
+						description: "Concrete problems found in the current render or scene.",
+					}),
+				),
+				nextAction: Type.String({
+					description: 'Either a fix to attempt next or "present to user" when the result is good enough.',
+				}),
+			}),
+			execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
+				const result = await blenderLogCritique({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					iteration: params.iteration,
+					accuracy: params.accuracy,
+					geometry: params.geometry,
+					materials: params.materials,
+					completeness: params.completeness,
+					quality: params.quality,
+					issues: params.issues,
+					nextAction: params.nextAction,
 				});
 
 				return {

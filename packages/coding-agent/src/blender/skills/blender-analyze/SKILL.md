@@ -1,9 +1,9 @@
 ---
-name: analyze
+name: blender-analyze
 description: Inspect and render Blender workspaces without mutating them unless the user explicitly asks for changes.
 ---
 
-# Analyze
+# Blender Analyze
 
 Use this skill when the user wants to understand an existing Blender scene.
 

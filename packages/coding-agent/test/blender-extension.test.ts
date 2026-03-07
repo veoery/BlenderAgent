@@ -27,6 +27,7 @@ describe("built-in blender extension", () => {
 		expect(extension.tools.has("blender_scene_info")).toBe(true);
 		expect(extension.tools.has("blender_save_view")).toBe(true);
 		expect(extension.tools.has("blender_render")).toBe(true);
+		expect(extension.tools.has("blender_log_critique")).toBe(true);
 		expect(extension.handlers.has("before_agent_start")).toBe(true);
 		expect(extension.handlers.has("resources_discover")).toBe(true);
 	});
@@ -34,9 +35,9 @@ describe("built-in blender extension", () => {
 	it("ships bundled Blender skills", () => {
 		const skillsDir = getBundledBlenderSkillsDir();
 		expect(existsSync(skillsDir)).toBe(true);
-		expect(existsSync(`${skillsDir}/create/SKILL.md`)).toBe(true);
-		expect(existsSync(`${skillsDir}/edit/SKILL.md`)).toBe(true);
-		expect(existsSync(`${skillsDir}/analyze/SKILL.md`)).toBe(true);
-		expect(existsSync(`${skillsDir}/with-reference/SKILL.md`)).toBe(true);
+		expect(existsSync(`${skillsDir}/blender-create/SKILL.md`)).toBe(true);
+		expect(existsSync(`${skillsDir}/blender-edit/SKILL.md`)).toBe(true);
+		expect(existsSync(`${skillsDir}/blender-analyze/SKILL.md`)).toBe(true);
+		expect(existsSync(`${skillsDir}/blender-with-reference/SKILL.md`)).toBe(true);
 	});
 });

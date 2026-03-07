@@ -15,10 +15,11 @@ The active Blender workflow in this repo is no longer subagent-first. Use `vibe-
 - `blender_scene_info`
 - `blender_save_view`
 - `blender_render`
-- `/skill:create`
-- `/skill:edit`
-- `/skill:analyze`
-- `/skill:with-reference`
+- `blender_log_critique`
+- `/skill:blender-create`
+- `/skill:blender-edit`
+- `/skill:blender-analyze`
+- `/skill:blender-with-reference`
 
 Current rules:
 
