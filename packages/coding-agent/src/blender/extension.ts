@@ -1,0 +1,271 @@
+import { Type } from "@sinclair/typebox";
+import { APP_NAME } from "../config.js";
+import type { ExtensionFactory } from "../core/extensions/index.js";
+import {
+	blenderExecutePython,
+	blenderRender,
+	blenderSaveView,
+	blenderSceneInfo,
+	blenderWorkspaceInit,
+	getBundledBlenderSkillsDir,
+} from "./runtime.js";
+
+const BLENDER_WORKFLOW_GUIDANCE = [
+	"You are operating inside vibe-blender with Blender-native tools available.",
+	"Prefer Blender tools over generic shell/file workflows for scene creation, editing, inspection, and rendering.",
+	"Keep the `workspace` argument explicit in every Blender tool call and reuse the same workspace across continuation turns.",
+	"Inspect before mutating when editing an existing scene, and render after meaningful scene changes that need visual verification.",
+	"Do not restate tool schemas in prose. Use the tool definitions directly.",
+].join(" ");
+
+function formatJsonResult(value: unknown): string {
+	return JSON.stringify(value, null, 2);
+}
+
+export function isVibeBlenderApp(appName: string): boolean {
+	return appName === "vibe-blender";
+}
+
+export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME): ExtensionFactory[] {
+	if (!isVibeBlenderApp(appName)) {
+		return [];
+	}
+
+	const factory: ExtensionFactory = (pi) => {
+		pi.registerTool({
+			name: "blender_workspace_init",
+			label: "Blender Workspace Init",
+			description:
+				"Create or reopen a managed Blender workspace with a persistent model.blend and workspace manifest.",
+			parameters: Type.Object({
+				workspace: Type.Optional(
+					Type.String({
+						description: "Explicit workspace path. Relative paths resolve from the current working directory.",
+					}),
+				),
+				sourceBlend: Type.Optional(
+					Type.String({
+						description: "Optional source .blend file to copy into the workspace as the starting model.blend.",
+					}),
+				),
+				template: Type.Optional(
+					Type.String({
+						description: 'Workspace template. Currently only "blank" is supported.',
+						default: "blank",
+					}),
+				),
+				continueExisting: Type.Optional(
+					Type.Boolean({
+						description: "When true, require the workspace to exist already instead of creating a new one.",
+						default: false,
+					}),
+				),
+			}),
+			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+				const result = await blenderWorkspaceInit({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					sourceBlend: params.sourceBlend,
+					template: params.template,
+					continueExisting: params.continueExisting,
+					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.registerTool({
+			name: "blender_execute_python",
+			label: "Blender Execute Python",
+			description:
+				"Run Blender Python against the workspace blend file, write iteration artifacts, and persist the updated model.blend.",
+			parameters: Type.Object({
+				workspace: Type.String({
+					description: "Explicit workspace path for the Blender task.",
+				}),
+				script: Type.String({
+					description: "Blender Python script to execute inside the workspace.",
+				}),
+				saveBefore: Type.Optional(
+					Type.Boolean({
+						description: "If true, copy the current model.blend into the iteration folder before execution.",
+						default: false,
+					}),
+				),
+				saveAfter: Type.Optional(
+					Type.Boolean({
+						description: "If true, save the updated Blender scene back to model.blend after execution.",
+						default: true,
+					}),
+				),
+				timeoutSeconds: Type.Optional(
+					Type.Number({
+						description: "Execution timeout in seconds.",
+						default: 120,
+					}),
+				),
+				label: Type.Optional(
+					Type.String({
+						description: "Optional label for the iteration step.",
+					}),
+				),
+			}),
+			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+				const result = await blenderExecutePython({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					script: params.script,
+					saveBefore: params.saveBefore,
+					saveAfter: params.saveAfter,
+					timeoutSeconds: params.timeoutSeconds,
+					label: params.label,
+					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.registerTool({
+			name: "blender_scene_info",
+			label: "Blender Scene Info",
+			description:
+				"Inspect the current Blender workspace and return structured scene metadata for planning or verification.",
+			parameters: Type.Object({
+				workspace: Type.String({
+					description: "Explicit workspace path for the Blender task.",
+				}),
+				includeObjects: Type.Optional(Type.Boolean({ default: true })),
+				includeCollections: Type.Optional(Type.Boolean({ default: true })),
+				includeMaterials: Type.Optional(Type.Boolean({ default: true })),
+				includeCameras: Type.Optional(Type.Boolean({ default: true })),
+				includeLights: Type.Optional(Type.Boolean({ default: true })),
+				includeRenderSettings: Type.Optional(Type.Boolean({ default: true })),
+			}),
+			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+				const result = await blenderSceneInfo({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					includeObjects: params.includeObjects,
+					includeCollections: params.includeCollections,
+					includeMaterials: params.includeMaterials,
+					includeCameras: params.includeCameras,
+					includeLights: params.includeLights,
+					includeRenderSettings: params.includeRenderSettings,
+					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.registerTool({
+			name: "blender_save_view",
+			label: "Blender Save View",
+			description:
+				"Save a named render view in the workspace manifest by binding it to the active camera or an explicit camera object.",
+			parameters: Type.Object({
+				workspace: Type.String({
+					description: "Explicit workspace path for the Blender task.",
+				}),
+				name: Type.String({
+					description: "Saved view name to store in the workspace manifest.",
+				}),
+				source: Type.String({
+					description: 'Either "active-camera" or a camera object name already present in the scene.',
+				}),
+			}),
+			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+				const result = await blenderSaveView({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					name: params.name,
+					source: params.source,
+					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.registerTool({
+			name: "blender_render",
+			label: "Blender Render",
+			description:
+				"Render the workspace blend file from a saved view, explicit camera, or the active camera, and write outputs into the current iteration.",
+			parameters: Type.Object({
+				workspace: Type.String({
+					description: "Explicit workspace path for the Blender task.",
+				}),
+				view: Type.Optional(
+					Type.String({
+						description: 'Optional saved view name, camera name, or "active-camera".',
+					}),
+				),
+				resolution: Type.Optional(
+					Type.Object({
+						x: Type.Number(),
+						y: Type.Number(),
+						percentage: Type.Optional(Type.Number()),
+					}),
+				),
+				samples: Type.Optional(
+					Type.Number({
+						description: "Optional Cycles sample count override.",
+					}),
+				),
+				outputName: Type.Optional(
+					Type.String({
+						description: "Output image file name. Defaults to render.png.",
+					}),
+				),
+				mode: Type.Optional(
+					Type.String({
+						description: 'Render mode label. Currently informational only; defaults to "still".',
+						default: "still",
+					}),
+				),
+			}),
+			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+				const result = await blenderRender({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					view: params.view,
+					resolution: params.resolution,
+					samples: params.samples,
+					outputName: params.outputName,
+					mode: params.mode,
+					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.on("resources_discover", () => ({
+			skillPaths: [getBundledBlenderSkillsDir()],
+		}));
+
+		pi.on("before_agent_start", (event) => ({
+			systemPrompt: `${event.systemPrompt}\n\n${BLENDER_WORKFLOW_GUIDANCE}`,
+		}));
+	};
+
+	return [factory];
+}

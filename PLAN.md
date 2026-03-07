@@ -1,159 +1,455 @@
-# BlenderAgent Plan
+# BlenderAgent Migration Plan
 
-## High-Level Goal
+## Goal
 
-Turn this repo from a Blender-branded fork of pi with subagent-oriented mode concepts into a Blender-native agent workflow with:
+Turn this repo into a Blender-native agent product built around:
 
-- one primary agent runtime
-- foundational Blender tools for scene mutation, inspection, rendering, and workspace management
-- skills for reusable prompt patterns such as create, edit, analyze, and reference-guided iteration
-- a persistent workspace model built around one active `.blend` file plus iteration artifacts
+- one primary `vibe-blender` runtime
+- Blender-specific tools that the model can call directly
+- skills for reusable prompting and workflow guidance
+- one managed workspace with a persistent `.blend` file and iteration artifacts
 
-The target architecture is capability-first, not subagent-first: the model should choose among Blender tools directly, while skills provide lightweight reusable behavior and prompting.
+The model should decide among Blender tools directly. Skills should shape behavior. Subagents should not be the main architecture.
 
-## Action Plan
+## Current state
 
-### Phase 1: Define the product boundary
+This plan assumes the current repo state is:
 
-1. Decide that subagents are no longer a core workflow concept.
-   Brief: keep the existing subagent example available only as an example or remove Blender documentation references to it.
+- `vibe-blender` is the user-facing CLI and primary product surface
+- Blender auto-launch exists, but Blender-native tools do not
+- the root docs still describe mode ideas like `CREATE`, `EDIT`, and `ANALYZE`
+- subagent usage is documented, but subagents are not the right long-term foundation
+- extension tools are first-class runtime tools when loaded and active
+- extension tools are visible to the model through tool definitions, but are not explicitly listed in the built-in system prompt text today
 
-2. Reframe `CREATE`, `EDIT`, `ANALYZE`, and reference-driven flows as skills, not separate agents.
-   Brief: these should become prompt-level behavior templates that steer tool usage rather than process-level orchestration.
+## Key decisions
 
-3. Keep a single managed Blender workspace per task/session.
-   Brief: standardize around one persistent `model.blend`, iteration folders, render outputs, logs, and prompt history.
+### 1. Use skills for reusable prompt behavior
 
-### Phase 2: Specify the foundational Blender tool surface
+`CREATE`, `EDIT`, `ANALYZE`, and reference-guided flows should become skills or skill-like prompt assets, not separate agents or subprocess roles.
 
-4. Introduce `blender_workspace_init`.
-   Brief: create or reopen a managed workspace, initialize directory structure, choose template or source `.blend`, and return canonical paths.
+### 2. Use Blender-native tools, not subagents, as the main capability layer
 
-5. Introduce `blender_execute_python`.
-   Brief: run Blender Python against the current workspace in a controlled way, save script/log artifacts, and return structured execution results.
+The model should operate by calling Blender tools directly for scene mutation, inspection, render generation, and workspace management.
 
-6. Introduce `blender_scene_info`.
-   Brief: inspect the active scene and return normalized JSON-like data for objects, collections, materials, cameras, lights, render settings, and scene statistics.
+### 3. Build a Blender execution layer under the tools
 
-7. Introduce `blender_save_view`.
-   Brief: capture the current Blender viewport or camera framing into workspace state so later renders can reuse user-approved views.
+The Blender execution layer is the shared runtime code that actually talks to Blender and the filesystem. Blender tools sit on top of it.
 
-8. Introduce `blender_render`.
-   Brief: render a named view or current saved view, write output into the workspace, and return image paths plus render metadata.
+### 4. Start with extension-level Blender tools
 
-9. Keep convenience tools out of the first core surface.
-   Brief: defer tools like object-specific mutation helpers, asset import/export, reference comparison, and critique helpers until the primitive workflow is stable.
+Blender tools should first be implemented as extension tools and loaded for `vibe-blender`. That keeps the generic pi runtime clean while the design stabilizes.
 
-### Phase 3: Build the Blender execution layer
+### 5. Blender tools must be active by default in `vibe-blender`
 
-10. Add a Blender runtime helper module behind the tools.
-    Brief: centralize Blender command invocation, environment resolution, workspace path handling, timeout behavior, log capture, and error normalization.
+When the user starts `vibe-blender`, all Blender extensions must be loaded and their tools active on the first turn. The model should not need a command or skill invocation just to gain access to them.
 
-11. Standardize Blender binary and Python execution configuration.
-    Brief: use `BLENDER_PATH` for Blender, define any Blender-specific env vars in one place, and avoid mode-specific env like `CREATE_PYTHON_BIN`.
+### 6. Keep generic coding tools available
 
-12. Define a stable workspace manifest format.
-    Brief: store machine-readable workspace metadata such as active blend file, saved views, iteration count, render outputs, and optional source assets.
+The Blender workflow still needs generic tools such as `read`, `edit`, `write`, `grep`, `find`, `ls`, and `bash` for logs, manifests, generated scripts, and repo changes.
 
-13. Implement iteration artifact conventions.
-    Brief: every execution/render cycle should produce consistent script, log, and output paths so both tools and the model can reason about state reliably.
+### 7. Use per-turn Blender prompt injection, not a new prompt asset type
 
-### Phase 4: Add Blender tools as extension-level capabilities first
+Blender-specific runtime guidance should be injected by extensions on each turn through the existing extension prompt hook.
 
-14. Implement the first Blender tools as extension tools, not built-in core tools.
-    Brief: this reduces coupling, keeps iteration fast, and fits the repo’s extension-first design.
+Rule:
+- keep this injected guidance compact and behavioral
+- do not restate full Blender tool schemas in prompt text
+- rely on tool definitions for tool discovery and argument structure
 
-15. Give each Blender tool explicit TypeBox schemas and structured result details.
-    Brief: avoid vague tool names or loosely typed payloads; the model should receive predictable parameters and machine-readable responses.
+### 8. Keep `workspace` explicit in Blender tool calls
 
-16. Add custom tool renderers for Blender operations.
-    Brief: show concise summaries for execution, render outputs, workspace paths, and failures so the interactive UI stays understandable.
+Blender tools should require an explicit `workspace` parameter rather than relying on hidden session-side implicit workspace state.
 
-17. Make Blender tools default-loaded for the Blender-flavored CLI.
-    Brief: `vibe-blender` should feel Blender-native without forcing those tools into generic `pi`.
+### 9. Remove subagents from Blender-facing workflow and docs, but not from generic examples
 
-### Phase 5: Rework prompting and skills
+Subagents should no longer appear as part of the default Blender architecture, docs, or recommended workflow.
 
-18. Write a Blender-specific system prompt appendix.
-    Brief: describe the workspace model, preferred tool sequencing, safety expectations, and when to inspect versus mutate versus render.
+Rule:
+- remove Blender-facing subagent references from root docs and Blender workflow guidance
+- do not delete the generic subagent example code unless a later cleanup explicitly asks for it
 
-19. Create reusable skills for `create`, `edit`, `analyze`, and `with-reference`.
-    Brief: each skill should define intent recognition, recommended tool order, iteration strategy, and stopping criteria.
+## Definitions
 
-20. Add narrower workflow skills later if needed.
-    Brief: examples include `material-pass`, `lighting-pass`, `scene-cleanup`, `match-camera`, and `render-debug`.
+### Skills
 
-21. Remove mode-heavy wording from product documentation.
-    Brief: present modes as behaviors or skills, not as subagent identities.
+Reusable prompting assets that teach the model how to approach a task. Skills should explain sequencing, priorities, iteration rules, and stopping conditions.
 
-### Phase 6: Wire tool availability into the runtime cleanly
+### Blender tools
 
-22. Decide how `vibe-blender` loads Blender tools by default.
-    Brief: prefer a Blender extension package or built-in extension registration path rather than hardcoding Blender tools into generic base tools immediately.
+Model-callable capabilities such as initializing a workspace, executing Blender Python, inspecting a scene, saving a view, and rendering.
 
-23. Keep generic core tools available alongside Blender tools.
-    Brief: `read`, `edit`, `write`, `grep`, `find`, `ls`, and `bash` still matter for inspecting workspace files, logs, and generated scripts.
+### Blender execution layer
 
-24. Update system-prompt tool descriptions to reflect the active Blender toolset.
-    Brief: if Blender tools are present by default, the prompt should teach the model when and why to use them.
+The implementation layer beneath the tools that resolves Blender configuration, runs Blender commands, manages workspaces, captures logs, applies timeouts, and normalizes errors.
 
-25. Make tool naming unambiguous.
-    Brief: use names like `blender_execute_python` rather than generic names like `execute` to avoid collisions with bash or other execution concepts.
+### Workspace
 
-### Phase 7: Replace the old workflow assumptions in docs and UX
+A directory containing the active `.blend` file and all artifacts for one user task or continued task branch.
 
-26. Update the root `README.md` to explain the new architecture.
-    Brief: describe the agent as one runtime with Blender tools and skills, not a collection of subagents for modes.
+## Target architecture
 
-27. Document workspace structure and iteration semantics.
-    Brief: users should understand what files are created, how continuation works, and how renders/logs/scripts are stored.
+### User-facing behavior
 
-28. Document skill usage examples instead of subagent installation.
-    Brief: replace symlink-based subagent setup with Blender-tool and skill setup instructions.
+- user starts `vibe-blender`
+- Blender auto-launch may happen as it does today
+- all Blender extensions are already loaded and active
+- Blender tools are already loaded and active
+- Blender skills are available
+- user asks for create, edit, analyze, or reference-guided work
+- model selects Blender tools directly and iterates through execute, inspect, render, and critique
 
-29. Clarify the difference between generic pi and BlenderAgent behavior.
-    Brief: explain what `vibe-blender` adds on top of the base coding agent runtime.
+### Runtime layers
 
-### Phase 8: Validation and hardening
+1. Skills
+   Prompt-level guidance for create, edit, analyze, and reference-driven work.
 
-30. Add tests for workspace initialization and path handling.
-    Brief: verify deterministic workspace creation, manifest updates, and continuation behavior.
+2. Blender tools
+   Thin model-facing interfaces with clear schemas and structured results.
 
-31. Add tests for Blender tool parameter validation and result shaping.
-    Brief: tool contracts should fail cleanly on invalid inputs and produce stable structured outputs on success.
+3. Blender execution layer
+   Shared operational foundation for process execution, path handling, workspace state, artifact writing, and error normalization.
 
-32. Add tests for prompt/runtime wiring.
-    Brief: ensure the Blender CLI loads the right tools and skills, and the system prompt reflects the active tool surface.
+4. Blender process and filesystem
+   Blender binary, `.blend` files, renders, logs, manifests, and generated scripts.
 
-33. Add failure-path coverage.
-    Brief: verify behavior when Blender is missing, a script fails, render output is absent, timeouts occur, or workspace metadata is corrupt.
+## Required first-pass tool surface
 
-34. Run `npm run check` after code changes and fix all reported issues.
-    Brief: keep the repo aligned with existing project rules before any merge or further iteration.
+These tools are the minimum Blender-native foundation.
 
-## Recommended implementation order
+### `blender_workspace_init`
 
-1. Define the workspace manifest and execution helper layer.
-2. Implement `blender_workspace_init`, `blender_execute_python`, `blender_scene_info`, `blender_save_view`, and `blender_render` as extension tools.
-3. Add Blender-specific system prompt guidance.
-4. Add `create`, `edit`, `analyze`, and `with-reference` skills.
-5. Update `vibe-blender` startup/loading so those tools and skills are available by default.
-6. Rewrite the root documentation around the new workflow.
-7. Add tests and harden failure cases.
+Purpose:
+- create or reopen a managed workspace
+- establish canonical workspace paths
+- choose blank template or source `.blend`
 
-## Core vs extension recommendation
+Suggested inputs:
+- `workspace`
+- `sourceBlend`
+- `template`
+- `continueExisting`
 
-### Keep extension-level first
+Suggested outputs:
+- `workspacePath`
+- `blendPath`
+- `manifestPath`
+- `iteration`
+- `created`
 
-- Blender workspace management tools
-- Blender execution and render tools
-- Blender-specific renderers for tool output
-- Blender workflow commands and UX helpers
-- Blender skills and prompt assets
+### `blender_execute_python`
 
-Reason: these pieces are product-specific, likely to evolve quickly, and should not destabilize the generic pi runtime while the interface is still changing.
+Purpose:
+- run Blender Python against the current workspace
+- mutate or inspect the scene in a controlled way
 
-### Consider promoting to core later only if they stabilize
+Suggested inputs:
+- `workspace`
+- `script`
+- `saveBefore`
+- `saveAfter`
+- `timeoutSeconds`
+- `label`
+
+Suggested outputs:
+- `blendPath`
+- `scriptPath`
+- `logPath`
+- `stdout`
+- `stderr`
+- `exitCode`
+- `changed`
+
+Rule:
+- do not name this tool `execute`; keep it Blender-scoped and explicit
+
+### `blender_scene_info`
+
+Purpose:
+- inspect scene state in structured form for planning and verification
+
+Suggested inputs:
+- `workspace`
+- `includeObjects`
+- `includeCollections`
+- `includeMaterials`
+- `includeCameras`
+- `includeLights`
+- `includeRenderSettings`
+
+Suggested outputs:
+- structured scene summary
+- object names and metadata
+- material names
+- camera/light info
+- render settings
+
+### `blender_save_view`
+
+Purpose:
+- capture a current view or named view for later rendering
+
+Suggested inputs:
+- `workspace`
+- `name`
+- `source`
+
+Suggested outputs:
+- saved view name
+- saved view metadata
+
+### `blender_render`
+
+Purpose:
+- render one or more views for visual feedback
+
+Suggested inputs:
+- `workspace`
+- `view`
+- `resolution`
+- `samples`
+- `outputName`
+- `mode`
+
+Suggested outputs:
+- rendered image path or paths
+- render log path
+- resolution and render metadata
+
+## Deferred tools
+
+These should stay out of the initial foundation unless implementation proves they are essential:
+
+- object-specific manipulation helpers
+- asset import/export helpers
+- render critique helpers
+- reference comparison helpers
+- destructive cleanup helpers
+- domain-specific shortcuts like material-only or lighting-only mutation tools
+
+These can be added later as extension-level convenience tools after the base workflow stabilizes.
+
+## Blender execution layer responsibilities
+
+The Blender execution layer must centralize:
+
+- `BLENDER_PATH` resolution
+- Blender process launching
+- background versus interactive invocation rules
+- script file generation and cleanup policy
+- workspace path resolution
+- manifest loading and updates
+- iteration numbering
+- stdout and stderr capture
+- log file writing
+- timeout handling
+- structured error normalization
+- render output path generation
+- continuation behavior for existing workspaces
+
+It should be the only place that knows the low-level details of how Blender is invoked.
+
+## Workspace contract
+
+The workspace model should be explicit and durable.
+
+### Required artifacts
+
+- `model.blend`
+- workspace manifest file
+- prompt history or seed prompt file
+- per-iteration script files
+- per-iteration Blender logs
+- render output files
+
+### Required behaviors
+
+- one persistent `.blend` file per workspace
+- deterministic iteration directory naming
+- explicit continuation support
+- stable paths that the model can reason about indirectly through tool results
+- enough metadata for future recovery or resume
+
+### Manifest should track
+
+- workspace id
+- active blend path
+- latest iteration number
+- saved views
+- render outputs
+- source assets or source blend path
+- timestamps
+- optional labels for iteration steps
+
+## Prompting and skills plan
+
+### Blender system prompt additions
+
+The Blender-specific prompt layer should explain:
+
+- the workspace concept
+- that Blender tools are the preferred path for Blender work
+- when to inspect before mutating
+- when to render after mutation
+- how to use saved views
+- how to avoid redundant renders
+- how to continue work in an existing workspace
+
+### Initial skills
+
+- `create`
+  Build a new scene from scratch, then inspect and render iteratively.
+
+- `edit`
+  Modify an existing workspace or `.blend` using inspection before targeted mutation.
+
+- `analyze`
+  Prefer inspection and rendering over mutation unless the user explicitly requests changes.
+
+- `with-reference`
+  Incorporate supplied images or style targets into planning and evaluation.
+
+### Later skills
+
+- `material-pass`
+- `lighting-pass`
+- `scene-cleanup`
+- `camera-match`
+- `render-debug`
+
+## Runtime integration requirements
+
+### `vibe-blender` startup
+
+`vibe-blender` must:
+
+- load all Blender extensions automatically
+- make Blender tools active by default
+- inject Blender runtime guidance each turn through extension prompt hooks
+- keep generic coding tools available
+
+### Tool visibility requirements
+
+- Blender extension tools must be active before the first prompt
+- tool definitions must reach the model through the normal tool payload
+- the Blender prompt layer should still explain when to use them because activation alone is not enough for good behavior
+
+### System prompt requirements
+
+The built-in system prompt currently emphasizes core tools only. The migration must ensure Blender guidance is injected when `vibe-blender` runs, even if Blender tools remain extension-level.
+
+Rule:
+- use per-turn extension prompt injection for the Blender prompt layer
+- keep the injected Blender block short and focused on workflow policy
+
+## Documentation changes required
+
+### Root README
+
+Rewrite the root documentation around:
+
+- one-agent Blender-native workflow
+- skills instead of mode/subagent orchestration
+- workspace structure
+- continuation flow
+- Blender tool behavior
+
+### Remove or downgrade subagent references
+
+- do not describe subagents as the main Blender architecture
+- remove Blender-facing subagent setup and workflow references from root docs
+- if generic subagent examples remain elsewhere, label them as optional example material only
+
+### Add setup docs
+
+Document:
+
+- Blender binary configuration
+- `vibe-blender` startup behavior
+- default Blender tool availability
+- skills usage
+- workspace layout
+
+## Code areas likely to change
+
+This is the expected implementation surface.
+
+### Existing files likely to change
+
+- `packages/coding-agent/src/cli.ts`
+- `packages/coding-agent/src/core/agent-session.ts`
+- `packages/coding-agent/src/core/system-prompt.ts`
+- `README.md`
+
+### New code likely needed
+
+- Blender extension entrypoint
+- Blender tool definitions
+- Blender execution-layer helpers
+- workspace manifest utilities
+- Blender prompt/skill assets
+- tests for tool activation, workspace behavior, and error cases
+
+## Delivery phases
+
+### Phase 1: architecture and contracts
+
+- finalize workspace contract
+- finalize first-pass tool surface
+- finalize execution-layer responsibilities
+- decide exact startup-loading path for all Blender extensions in `vibe-blender`
+- define the compact per-turn Blender prompt injection contract
+
+### Phase 2: execution layer
+
+- implement shared Blender runtime helpers
+- implement manifest read/write logic
+- implement iteration artifact conventions
+
+### Phase 3: Blender tools
+
+- add the five foundation tools as extension tools
+- add structured results and custom renderers
+- verify tools are active by default in `vibe-blender`
+- verify `workspace` remains explicit in all Blender tool schemas
+
+### Phase 4: prompting and skills
+
+- add Blender system prompt layer via per-turn extension prompt injection
+- add `create`, `edit`, `analyze`, and `with-reference` skills
+- ensure prompt guidance matches the actual tool surface
+
+### Phase 5: docs and UX
+
+- rewrite root docs
+- remove Blender-facing subagent framing
+- document workspace and continuation behavior
+
+### Phase 6: tests and hardening
+
+- add activation tests
+- add workspace and manifest tests
+- add tool validation tests
+- add Blender-missing and timeout failure tests
+- run `npm run check`
+
+## Acceptance criteria
+
+The migration is complete when all of the following are true:
+
+- starting `vibe-blender` makes Blender tools active on the first turn
+- starting `vibe-blender` loads all Blender extensions on the first turn
+- the model can use Blender tools without manual activation
+- Blender work is organized around one managed workspace with a persistent `.blend`
+- Blender tool calls keep `workspace` explicit
+- `CREATE`, `EDIT`, and `ANALYZE` behavior is provided through skills or equivalent prompt assets, not subagents
+- the root docs no longer describe subagents as the primary Blender workflow
+- the Blender prompt layer explains how and when to use Blender tools
+- tests cover activation, workspace flow, and failure paths
+
+## Promotion rule for later
+
+Only consider promoting Blender concepts into core after the extension-level design stabilizes. Candidates for later promotion are:
 
 - workspace initialization contract
 - Blender execution contract
@@ -161,4 +457,4 @@ Reason: these pieces are product-specific, likely to evolve quickly, and should 
 - saved-view contract
 - render contract
 
-Reason: these are the only Blender concepts that look fundamental enough to become durable primitives if this fork becomes a long-lived distinct product.
+Everything else should remain extension-level unless there is a strong product reason to generalize it.

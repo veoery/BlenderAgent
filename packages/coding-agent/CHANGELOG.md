@@ -6,6 +6,13 @@
 
 - Added Blender auto-launch for the `vibe-blender` CLI name. On interactive startup, the CLI now launches Blender from `BLENDER_PATH` (default: `/Applications/Blender.app/Contents/MacOS/Blender`) alongside the coding agent. Disable auto-launch with `--no-blender` or `VIBE_BLENDER_NO_BLENDER=1`.
 - Added `PI_SUBAGENT_COMMAND` support in the subagent extension example to choose which CLI command is used for delegated subagent runs (supports comma-separated fallback commands).
+- Added a bundled Blender extension for `vibe-blender` with the first Blender-native tool surface: `blender_workspace_init`, `blender_execute_python`, `blender_scene_info`, `blender_save_view`, and `blender_render`.
+- Added bundled Blender skills for `create`, `edit`, `analyze`, and `with-reference`, loaded automatically by the built-in Blender extension.
+
+### Changed
+
+- `vibe-blender` now loads the bundled Blender extension automatically at startup and injects compact Blender workflow guidance on each turn.
+- Rewrote Blender-facing root docs around the tool-first workspace workflow instead of subagent setup.
 
 ### Fixed
 

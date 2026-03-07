@@ -8,6 +8,7 @@
 import { type ImageContent, modelsAreEqual, supportsXhigh } from "@mariozechner/pi-ai";
 import chalk from "chalk";
 import { createInterface } from "readline";
+import { getBuiltInBlenderExtensionFactories } from "./blender/extension.js";
 import { type Args, parseArgs, printHelp } from "./cli/args.js";
 import { selectConfig } from "./cli/config-selector.js";
 import { processFileArguments } from "./cli/file-processor.js";
@@ -572,6 +573,7 @@ export async function main(args: string[]) {
 		cwd,
 		agentDir,
 		settingsManager,
+		extensionFactories: getBuiltInBlenderExtensionFactories(),
 		additionalExtensionPaths: firstPass.extensions,
 		additionalSkillPaths: firstPass.skills,
 		additionalPromptTemplatePaths: firstPass.promptTemplates,

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Added
+- Added a legacy note in `.pi/agents/CREATE.md` pointing Blender workflows to the built-in `vibe-blender` tools and skills instead of subagents.
 - Added `CREATE` subagent (`.pi/agents/CREATE.md`) for text-to-3D scene generation with iterative execute/render workflow.
 - Added workspace continuation protocol via `workspace=<path>` for follow-up runs to keep iteration state stable across subagent restarts.
 - Added `current-view` render mode in `.pi/agents/CREATE/render_blend.py` to render from the saved Blender viewport perspective.

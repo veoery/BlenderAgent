@@ -1,70 +1,48 @@
-# BlenderAgent
+# vibe-blender
 
-[![BlenderAgent demo preview](assets/BlenderAgent_0226_3_preview.gif)](assets/BlenderAgent_0226_3.mp4)
+[![vibe-blender demo preview](assets/BlenderAgent_0226_3_preview.gif)](assets/BlenderAgent_0226_3.mp4)
 
-Click the preview to open the full video (`assets/BlenderAgent_0226_3.mp4`).
+`vibe-blender` is a Blender-native agent workflow built on the pi coding-agent runtime.
 
-BlenderAgent is an AI workflow for Blender that turns natural-language requests into 3D scenes and iteratively improves results through visual feedback.
+The model works through Blender-specific tools instead of subagents. It can initialize a managed workspace, execute Blender Python, inspect scene state, save named views, and render images while keeping a persistent `model.blend` in one workspace.
 
-The system is built around a ReAct loop: reason about intent, act by generating/executing Blender Python, observe renders, then refine.
+## Current direction
 
-## Project Status
+The repo is moving toward one primary workflow:
 
-Current implementation:
-- `CREATE` agent: implemented and usable
+- one `vibe-blender` runtime
+- Blender tools active by default
+- reusable Blender skills for `create`, `edit`, `analyze`, and reference-guided work
+- one explicit workspace per task
 
-In progress:
-- `EDIT`
-- `ANALYSE`
-- Other multi-mode Blender agents
+## Built-in Blender tools
 
-## How BlenderAgent Works (ReAct Loop)
+When you start `vibe-blender`, these Blender tools are loaded automatically:
 
-BlenderAgent runs the same cycle each iteration:
+- `blender_workspace_init`
+- `blender_execute_python`
+- `blender_scene_info`
+- `blender_save_view`
+- `blender_render`
 
-High-level loop:
-1. Understand request and constraints.
-2. Generate or update Blender Python script.
-3. Execute script to update `.blend`.
-4. Render output for visual verification.
-5. Critique result against prompt (accuracy, geometry, materials, completeness, quality).
-6. Iterate only on the gaps until acceptable quality.
+Generic coding tools such as `read`, `edit`, `write`, `grep`, `find`, `ls`, and `bash` remain available for logs, manifests, and generated scripts.
 
-Why this loop is used:
-- Reduces hallucinated "one-shot perfect model" behavior.
-- Keeps changes inspectable at each iteration.
-- Lets users steer perspective and quality before finalizing.
+## Built-in Blender skills
 
-## Mode Guide
+The bundled Blender extension also provides these skills:
 
-BlenderAgent supports multiple operational modes. Not all are implemented yet in this repo.
+- `/skill:create`
+- `/skill:edit`
+- `/skill:analyze`
+- `/skill:with-reference`
 
-| Mode | Typical input | What it does | Status |
-|---|---|---|---|
-| `CREATE` | Text prompt | Builds a brand-new scene from scratch, then iterates through execute + render + critique. | Implemented |
-| `CREATE-WITH-REF` | Text + images | Creates a new scene while matching style/shape cues from reference images. | In progress |
-| `EDIT` | `.blend` + text | Modifies an existing scene based on requested changes. | In progress |
-| `EDIT-WITH-REF` | `.blend` + text + images | Edits an existing scene guided by both instructions and references. | In progress |
-| `EDIT-TO-MATCH` | `.blend` + images | Edits an existing scene to resemble references even without text instructions. | In progress |
-| `ANALYSE` | `.blend` (optional text question) | Inspects scene structure and renders views to answer analysis questions. | In progress |
-| `ANALYSE-IMAGE` | Images | Describes and discusses provided images. | In progress |
-| `COMPARE` | Multiple `.blend` files | Compares scenes side-by-side (structure and renders). | In progress |
-
-### CREATE Mode (Current)
-
-`CREATE` is the production mode available now.
-
-It focuses on text-to-3D generation with:
-- Workspace-first execution
-- One persistent `model.blend` per session
-- Iteration snapshots (`iteration_XX`) for scripts/logs/renders
-- User-controlled view selection before render (save current Blender view, then render)
+These skills add workflow guidance. The actual scene work still happens through Blender tools.
 
 ## Requirements
 
-- Blender installed
-- This repo checked out locally
-- A runnable `pi`/BlenderAgent CLI command
+- Blender installed locally
+- this repo checked out locally
+- dependencies installed
 
 Recommended Blender binary on macOS:
 
@@ -74,86 +52,75 @@ export BLENDER_PATH="/Applications/Blender.app/Contents/MacOS/Blender"
 
 ## Setup
 
-From repo root:
+From the repo root:
 
 ```bash
 npm install
-npm run build
 ```
 
-Install the subagent extension:
+## Usage
 
-```bash
-mkdir -p ~/.pi/agent/extensions/subagent
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.pi/agent/extensions/subagent/index.ts
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.pi/agent/extensions/subagent/agents.ts
-```
-
-Point subagent spawning to a real executable command (not a shell alias):
-
-```bash
-export PI_SUBAGENT_COMMAND="$(pwd)/packages/coding-agent/dist/cli.js"
-```
-
-`CREATE` defaults to Anaconda Python unless overridden:
-
-```bash
-export CREATE_PYTHON_BIN="/opt/anaconda3/bin/python"
-```
-
-## How to Use CREATE
-
-Start BlenderAgent (for example from this repo):
+Start the CLI:
 
 ```bash
 ./pi-test.sh
 ```
 
-Then prompt naturally, for example:
+Or run the built CLI directly:
 
-```text
-Use CREATE to create a modern coffee table in Blender.
+```bash
+vibe-blender
 ```
 
-For continuation turns, keep workspace continuity explicit:
+Example prompts:
 
 ```text
-Continue with workspace=outputs/20260226_123456
+Use /skill:create and build a modern coffee table in Blender.
 ```
 
-## Output Structure
+```text
+Initialize a workspace and create a stylized desk lamp in Blender.
+```
 
-Each run creates one workspace under `outputs/`.
+```text
+Use /skill:edit with workspace=outputs/20260306_120000 and make the lamp shade wider.
+```
+
+```text
+Use /skill:analyze with workspace=outputs/20260306_120000 and tell me which objects and materials are present.
+```
+
+## Workspace model
+
+Every Blender task should use an explicit `workspace` path. The tools return the workspace path so follow-up turns can continue the same task without guessing.
+
+Typical structure:
 
 ```text
 outputs/TIMESTAMP/
-├── prompt.txt
-├── critique.log
-├── script.py
+├── blender-workspace.json
 ├── model.blend
-├── blender.log
-├── full_script.py
-├── iteration_01/
-│   ├── script.py
-│   ├── blender.log
-│   ├── full_script.py
-│   └── renders/
-│       └── render_current_view_camera.png
-└── iteration_02/
-    └── ...
+├── script.py
+└── iteration_01/
+    ├── script.py
+    ├── blender.log
+    └── renders/
+        └── render.png
 ```
 
-Notes:
-- A single `model.blend` is reused across iterations.
-- `iteration_XX/` stores render/log/script snapshots.
-- Blender backup versions (`.blend1`, `.blend2`, ...) are disabled for this workflow.
+The workspace root `script.py` is the canonical current Blender script. Each execution updates that file first, then snapshots it into the current `iteration_XX/` folder before running.
 
-## Design Principles
+## Design principles
 
-- ReAct-first: render and critique drive refinements
-- Workspace isolation: all artifacts stay inside one workspace
-- Non-destructive flow: iterate through script updates and snapshots
-- User-in-the-loop perspective control: render from saved current view
+- use Blender tools directly instead of subagents
+- keep `workspace` explicit in Blender tool calls
+- inspect before mutating when editing existing scenes
+- render after meaningful scene changes
+- keep one persistent `.blend` per workspace
+
+## Legacy note
+
+Older subagent-oriented CREATE workflow material remains in `.pi/agents/` as legacy reference only. It is no longer the primary architecture described by this repo.
 
 ## License
 
