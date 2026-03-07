@@ -60,7 +60,7 @@ export interface WorkspaceInitResult {
 export interface ExecutePythonOptions {
 	cwd: string;
 	workspace: string;
-	script: string;
+	script_path: string;
 	saveBefore?: boolean;
 	saveAfter?: boolean;
 	timeoutSeconds?: number;
@@ -73,6 +73,7 @@ export interface ExecutePythonResult {
 	blendPath: string;
 	manifestPath: string;
 	iteration: number;
+	sourceScriptPath: string;
 	scriptPath: string;
 	logPath: string;
 	stdout: string;
@@ -673,10 +674,18 @@ export async function blenderExecutePython(options: ExecutePythonOptions): Promi
 	await mkdir(iterationDir, { recursive: true });
 
 	const workspaceScriptPath = await ensureWorkspaceScriptExists(manifest.workspacePath);
+	const sourceScriptPath = normalizeUserPath(options.cwd, options.script_path);
+	if (sourceScriptPath !== workspaceScriptPath) {
+		throw new Error(
+			`blender_execute_python expects script_path to point to the workspace root script: ${workspaceScriptPath}`,
+		);
+	}
+	if (!(await fileExists(sourceScriptPath))) {
+		throw new Error(`Blender script not found: ${sourceScriptPath}`);
+	}
 	const scriptPath = join(iterationDir, "script.py");
 	const logPath = join(iterationDir, "blender.log");
-	await writeFile(workspaceScriptPath, options.script, "utf-8");
-	await copyFile(workspaceScriptPath, scriptPath);
+	await copyFile(sourceScriptPath, scriptPath);
 
 	if (options.saveBefore) {
 		await copyFile(manifest.blendPath, join(iterationDir, "model.before.blend"));
@@ -713,6 +722,7 @@ export async function blenderExecutePython(options: ExecutePythonOptions): Promi
 		blendPath: initResult.blendPath,
 		manifestPath: initResult.manifestPath,
 		iteration,
+		sourceScriptPath,
 		scriptPath,
 		logPath,
 		stdout: result.stdout,

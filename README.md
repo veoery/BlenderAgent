@@ -110,8 +110,9 @@ outputs/TIMESTAMP/
         └── render.png
 ```
 
-The workspace root `script.py` is the canonical current Blender script. Each execution updates that file first, then snapshots it into the current `iteration_XX/` folder before running.
+The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running.
 The workspace root `critique.log` stores the render critique for each create/edit iteration.
+For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file.
 
 ## Design principles
 

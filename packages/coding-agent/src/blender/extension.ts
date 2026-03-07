@@ -15,6 +15,7 @@ const BLENDER_WORKFLOW_GUIDANCE = [
 	"You are operating inside vibe-blender with Blender-native tools available.",
 	"Prefer Blender tools over generic shell/file workflows for scene creation, editing, inspection, and rendering.",
 	"Keep the `workspace` argument explicit in every Blender tool call and reuse the same workspace across continuation turns.",
+	"Author Blender code in the workspace root script.py using the normal write/edit tools, then call blender_execute_python with script_path pointing to that global script.",
 	"Inspect before mutating when editing an existing scene, and render after meaningful scene changes that need visual verification.",
 	"For create and edit work, use a short ReAct loop: execute, render, critique, log the critique, then either stop when the result is good enough or iterate. Do at most 5 iterations for each new user instruction.",
 	"Do not restate tool schemas in prose. Use the tool definitions directly.",
@@ -84,13 +85,14 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_execute_python",
 			label: "Blender Execute Python",
 			description:
-				"Run Blender Python against the workspace blend file, write iteration artifacts, and persist the updated model.blend.",
+				"Copy the workspace root Blender script into the current iteration folder, execute it against the workspace blend file, and persist the updated model.blend.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
 				}),
-				script: Type.String({
-					description: "Blender Python script to execute inside the workspace.",
+				script_path: Type.String({
+					description:
+						"Path to the existing Blender Python script to snapshot and execute. Use the workspace root script.py.",
 				}),
 				saveBefore: Type.Optional(
 					Type.Boolean({
@@ -120,7 +122,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 				const result = await blenderExecutePython({
 					cwd: ctx.cwd,
 					workspace: params.workspace,
-					script: params.script,
+					script_path: params.script_path,
 					saveBefore: params.saveBefore,
 					saveAfter: params.saveAfter,
 					timeoutSeconds: params.timeoutSeconds,
