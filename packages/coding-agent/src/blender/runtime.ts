@@ -1,8 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { access, appendFile, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, appendFile, copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { getBlenderAssetsDir, getBlenderBridgeDir } from "../config.js";
 import { execCommand } from "../core/exec.js";
 
 const DEFAULT_BLENDER_PATH = "/Applications/Blender.app/Contents/MacOS/Blender";
@@ -10,10 +11,14 @@ const MANIFEST_FILE = "blender-workspace.json";
 const WORKSPACE_SCRIPT_FILE = "script.py";
 const CRITIQUE_LOG_FILE = "critique.log";
 const DEFAULT_RENDER_EXTENSION = ".png";
+const LIVE_BRIDGE_TIMEOUT_MS = 30_000;
+const LIVE_BRIDGE_POLL_MS = 200;
 
 export interface BlenderSavedView {
 	name: string;
-	cameraName: string;
+	cameraObjectName: string;
+	cameraSettingsName?: string;
+	cameraName?: string;
 	source: string;
 	savedAt: string;
 }
@@ -26,7 +31,7 @@ export interface BlenderRenderOutput {
 }
 
 export interface BlenderWorkspaceManifest {
-	version: 1;
+	version: 1 | 2;
 	workspaceId: string;
 	workspacePath: string;
 	blendPath: string;
@@ -85,10 +90,14 @@ export interface ExecutePythonResult {
 export interface SceneInfoOptions {
 	cwd: string;
 	workspace: string;
+	categories?: Array<
+		"objects" | "collections" | "materials" | "cameras" | "cameraSettings" | "lights" | "views" | "renderSettings"
+	>;
 	includeObjects?: boolean;
 	includeCollections?: boolean;
 	includeMaterials?: boolean;
 	includeCameras?: boolean;
+	includeCameraSettings?: boolean;
 	includeLights?: boolean;
 	includeRenderSettings?: boolean;
 	signal?: AbortSignal;
@@ -97,13 +106,28 @@ export interface SceneInfoOptions {
 export interface SceneInfoResult {
 	workspacePath: string;
 	blendPath: string;
+	iteration: number;
+	sceneInfoPath: string;
 	activeCameraName: string | null;
 	objects: Array<Record<string, unknown>>;
 	collections: Array<Record<string, unknown>>;
 	materials: Array<Record<string, unknown>>;
 	cameras: Array<Record<string, unknown>>;
+	cameraSettings: Array<Record<string, unknown>>;
 	lights: Array<Record<string, unknown>>;
+	views: BlenderSavedView[];
 	renderSettings: Record<string, unknown> | null;
+}
+
+interface SceneInfoSelection {
+	includeObjects: boolean;
+	includeCollections: boolean;
+	includeMaterials: boolean;
+	includeCameras: boolean;
+	includeCameraSettings: boolean;
+	includeLights: boolean;
+	includeViews: boolean;
+	includeRenderSettings: boolean;
 }
 
 export interface SaveViewOptions {
@@ -111,6 +135,7 @@ export interface SaveViewOptions {
 	workspace: string;
 	name: string;
 	source: string;
+	camera_name?: string;
 	signal?: AbortSignal;
 }
 
@@ -247,16 +272,47 @@ async function fileExists(filePath: string): Promise<boolean> {
 	}
 }
 
+function getSavedViewCameraObjectName(savedView: BlenderSavedView): string | null {
+	if (typeof savedView.cameraObjectName === "string" && savedView.cameraObjectName.length > 0) {
+		return savedView.cameraObjectName;
+	}
+	return typeof savedView.cameraName === "string" && savedView.cameraName.length > 0 ? savedView.cameraName : null;
+}
+
+function normalizeSavedView(savedView: BlenderSavedView): BlenderSavedView {
+	const cameraObjectName = getSavedViewCameraObjectName(savedView);
+	if (!cameraObjectName) {
+		throw new Error(`Saved view "${savedView.name}" does not reference a camera object.`);
+	}
+	return {
+		name: savedView.name,
+		cameraObjectName,
+		cameraSettingsName: savedView.cameraSettingsName,
+		cameraName: savedView.cameraName,
+		source: savedView.source,
+		savedAt: savedView.savedAt,
+	};
+}
+
 async function readManifest(workspacePath: string): Promise<BlenderWorkspaceManifest | undefined> {
 	const manifestPath = getManifestPath(workspacePath);
 	if (!(await fileExists(manifestPath))) {
 		return undefined;
 	}
 	const raw = await readFile(manifestPath, "utf-8");
-	return JSON.parse(raw) as BlenderWorkspaceManifest;
+	const parsed = JSON.parse(raw) as BlenderWorkspaceManifest;
+	const savedViews = Object.fromEntries(
+		Object.entries(parsed.savedViews ?? {}).map(([name, savedView]) => [name, normalizeSavedView(savedView)]),
+	);
+	return {
+		...parsed,
+		savedViews,
+		renderOutputs: parsed.renderOutputs ?? [],
+	};
 }
 
 async function writeManifest(manifest: BlenderWorkspaceManifest): Promise<void> {
+	manifest.version = 2;
 	manifest.updatedAt = nowIso();
 	await writeFile(manifest.manifestPath, JSON.stringify(manifest, null, 2));
 }
@@ -332,7 +388,7 @@ async function ensureWorkspaceInitialized(options: WorkspaceInitOptions): Promis
 	}
 
 	const manifest: BlenderWorkspaceManifest = {
-		version: 1,
+		version: 2,
 		workspaceId: createWorkspaceId(),
 		workspacePath,
 		blendPath,
@@ -381,6 +437,110 @@ async function writeJsonTempFile(prefix: string, contents: string): Promise<stri
 
 async function cleanupTempFile(filePath: string): Promise<void> {
 	await rm(dirname(filePath), { recursive: true, force: true });
+}
+
+function getLiveBridgePaths(): {
+	bridgeDir: string;
+	requestsDir: string;
+	responsesDir: string;
+} {
+	const bridgeDir = getBlenderBridgeDir();
+	return {
+		bridgeDir,
+		requestsDir: join(bridgeDir, "requests"),
+		responsesDir: join(bridgeDir, "responses"),
+	};
+}
+
+async function delay(ms: number, signal?: AbortSignal): Promise<void> {
+	if (signal?.aborted) {
+		throw signal.reason instanceof Error ? signal.reason : new Error("Operation aborted.");
+	}
+	if (!signal) {
+		await new Promise<void>((resolveDelay) => {
+			setTimeout(resolveDelay, ms);
+		});
+		return;
+	}
+	const abortSignal = signal;
+
+	await new Promise<void>((resolveDelay, rejectDelay) => {
+		const timeout = setTimeout(() => {
+			abortSignal.removeEventListener("abort", onAbort);
+			resolveDelay();
+		}, ms);
+
+		function onAbort(): void {
+			clearTimeout(timeout);
+			abortSignal.removeEventListener("abort", onAbort);
+			rejectDelay(abortSignal.reason instanceof Error ? abortSignal.reason : new Error("Operation aborted."));
+		}
+
+		abortSignal.addEventListener("abort", onAbort, { once: true });
+	});
+}
+
+async function requestLiveBlenderCapture(options: {
+	blendPath: string;
+	viewName: string;
+	cameraObjectName: string;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+}): Promise<{ cameraObjectName: string; cameraSettingsName: string | null; activeCameraName: string | null }> {
+	const { requestsDir, responsesDir } = getLiveBridgePaths();
+	await mkdir(requestsDir, { recursive: true });
+	await mkdir(responsesDir, { recursive: true });
+
+	const requestId = randomUUID();
+	const requestPath = join(requestsDir, `${requestId}.json`);
+	const responsePath = join(responsesDir, `${requestId}.json`);
+	const tempRequestPath = join(requestsDir, `${requestId}.tmp`);
+	await writeFile(
+		tempRequestPath,
+		JSON.stringify(
+			{
+				id: requestId,
+				type: "capture-view",
+				blendPath: options.blendPath,
+				viewName: options.viewName,
+				cameraObjectName: options.cameraObjectName,
+				cameraSettingsName: `${options.cameraObjectName}.settings`,
+			},
+			null,
+			2,
+		),
+		"utf-8",
+	);
+	await rename(tempRequestPath, requestPath);
+
+	const deadline = Date.now() + (options.timeoutMs ?? LIVE_BRIDGE_TIMEOUT_MS);
+	while (Date.now() < deadline) {
+		if (await fileExists(responsePath)) {
+			const responseRaw = await readFile(responsePath, "utf-8");
+			await rm(responsePath, { force: true });
+			const response = JSON.parse(responseRaw) as
+				| {
+						ok: true;
+						result: {
+							cameraObjectName: string;
+							cameraSettingsName: string | null;
+							activeCameraName: string | null;
+						};
+				  }
+				| { ok: false; error?: string; traceback?: string };
+			if (!response.ok) {
+				const details = response.traceback ? `\n\n${response.traceback}` : "";
+				throw new Error(`${response.error ?? "Live Blender bridge request failed."}${details}`);
+			}
+			return response.result;
+		}
+		await delay(LIVE_BRIDGE_POLL_MS, options.signal);
+	}
+
+	await rm(requestPath, { force: true });
+	throw new Error(
+		"Timed out waiting for the live Blender bridge. Keep Blender open with the vibe-blender bridge script loaded and the workspace .blend open in the UI.",
+	);
 }
 
 function parseJsonBlock(stdout: string): unknown {
@@ -449,6 +609,35 @@ async function loadWorkspaceManifest(cwd: string, workspace: string): Promise<Bl
 	return manifest;
 }
 
+function resolveSceneInfoSelection(options: SceneInfoOptions): SceneInfoSelection {
+	const categories = options.categories;
+	if (categories && categories.length > 0) {
+		const selected = new Set(categories);
+		return {
+			includeObjects: selected.has("objects"),
+			includeCollections: selected.has("collections"),
+			includeMaterials: selected.has("materials"),
+			includeCameras: selected.has("cameras"),
+			includeCameraSettings: selected.has("cameraSettings"),
+			includeLights: selected.has("lights"),
+			includeViews: selected.has("views"),
+			includeRenderSettings: selected.has("renderSettings"),
+		};
+	}
+
+	const includeCameras = options.includeCameras ?? true;
+	return {
+		includeObjects: options.includeObjects ?? true,
+		includeCollections: options.includeCollections ?? true,
+		includeMaterials: options.includeMaterials ?? true,
+		includeCameras,
+		includeCameraSettings: options.includeCameraSettings ?? includeCameras,
+		includeLights: options.includeLights ?? true,
+		includeViews: true,
+		includeRenderSettings: options.includeRenderSettings ?? true,
+	};
+}
+
 function buildSceneInfoScript(): string {
 	return `
 import bpy
@@ -470,6 +659,7 @@ result = {
     "collections": [],
     "materials": [],
     "cameras": [],
+    "cameraSettings": [],
     "lights": [],
     "renderSettings": None,
 }
@@ -500,12 +690,29 @@ if payload.get("includeMaterials", True):
         })
 
 if payload.get("includeCameras", True):
-    for camera in bpy.data.cameras:
+    for obj in bpy.data.objects:
+        if obj.type != "CAMERA":
+            continue
         result["cameras"].append({
+            "name": obj.name,
+            "cameraSettingsName": obj.data.name if obj.data else None,
+            "location": maybe_vector(obj.location),
+            "rotationEuler": maybe_vector(obj.rotation_euler),
+            "scale": maybe_vector(obj.scale),
+            "isSceneCamera": bool(scene.camera and scene.camera.name == obj.name),
+        })
+
+if payload.get("includeCameraSettings", True):
+    for camera in bpy.data.cameras:
+        result["cameraSettings"].append({
             "name": camera.name,
+            "type": camera.type,
             "lens": float(camera.lens),
+            "sensorWidth": float(camera.sensor_width),
+            "sensorHeight": float(camera.sensor_height),
             "clipStart": float(camera.clip_start),
             "clipEnd": float(camera.clip_end),
+            "orthoScale": float(getattr(camera, "ortho_scale", 0.0)),
         })
 
 if payload.get("includeLights", True):
@@ -624,17 +831,24 @@ async function getSceneInfoFromManifest(
 	manifest: BlenderWorkspaceManifest,
 	options: Omit<SceneInfoOptions, "cwd" | "workspace">,
 ): Promise<SceneInfoResult> {
+	const selection = resolveSceneInfoSelection({
+		cwd,
+		workspace: manifest.workspacePath,
+		...options,
+	});
+
 	return await runBlenderJson<SceneInfoResult>({
 		cwd,
 		blendPath: manifest.blendPath,
 		scriptSource: buildSceneInfoScript(),
 		payload: {
-			includeObjects: options.includeObjects ?? true,
-			includeCollections: options.includeCollections ?? true,
-			includeMaterials: options.includeMaterials ?? true,
-			includeCameras: options.includeCameras ?? true,
-			includeLights: options.includeLights ?? true,
-			includeRenderSettings: options.includeRenderSettings ?? true,
+			includeObjects: selection.includeObjects,
+			includeCollections: selection.includeCollections,
+			includeMaterials: selection.includeMaterials,
+			includeCameras: selection.includeCameras,
+			includeCameraSettings: selection.includeCameraSettings,
+			includeLights: selection.includeLights,
+			includeRenderSettings: selection.includeRenderSettings,
 		},
 		signal: options.signal,
 		timeoutMs: 60_000,
@@ -654,7 +868,7 @@ function normalizeRenderOutputName(name?: string): string {
 }
 
 export function getBundledBlenderSkillsDir(): string {
-	return fileURLToPath(new URL("./skills", import.meta.url));
+	return join(getBlenderAssetsDir(), "skills");
 }
 
 export async function blenderWorkspaceInit(options: WorkspaceInitOptions): Promise<WorkspaceInitResult> {
@@ -734,52 +948,74 @@ export async function blenderExecutePython(options: ExecutePythonOptions): Promi
 
 export async function blenderSceneInfo(options: SceneInfoOptions): Promise<SceneInfoResult> {
 	const manifest = await loadWorkspaceManifest(options.cwd, options.workspace);
+	const iteration = manifest.latestIteration > 0 ? manifest.latestIteration : 1;
+	const { iterationDir } = getIterationPaths(manifest.workspacePath, iteration);
+	await mkdir(iterationDir, { recursive: true });
 	const result = await getSceneInfoFromManifest(options.cwd, manifest, options);
-	return {
+	const selection = resolveSceneInfoSelection(options);
+	const sceneInfoResult: SceneInfoResult = {
 		workspacePath: manifest.workspacePath,
 		blendPath: manifest.blendPath,
+		iteration,
+		sceneInfoPath: join(iterationDir, "scene-info.json"),
 		activeCameraName: result.activeCameraName,
 		objects: result.objects,
 		collections: result.collections,
 		materials: result.materials,
 		cameras: result.cameras,
+		cameraSettings: result.cameraSettings,
 		lights: result.lights,
+		views: selection.includeViews ? Object.values(manifest.savedViews) : [],
 		renderSettings: result.renderSettings,
 	};
+	await writeFile(sceneInfoResult.sceneInfoPath, JSON.stringify(sceneInfoResult, null, 2), "utf-8");
+	return sceneInfoResult;
 }
 
 export async function blenderSaveView(options: SaveViewOptions): Promise<SaveViewResult> {
 	const manifest = await loadWorkspaceManifest(options.cwd, options.workspace);
-	const sceneInfo = await getSceneInfoFromManifest(options.cwd, manifest, {
-		includeObjects: false,
-		includeCollections: false,
-		includeMaterials: false,
-		includeCameras: true,
-		includeLights: false,
-		includeRenderSettings: false,
-		signal: options.signal,
-	});
+	let cameraObjectName: string | null = null;
+	let cameraSettingsName: string | null = null;
 
-	let cameraName: string | null = null;
 	if (options.source === "active-camera") {
-		cameraName = sceneInfo.activeCameraName;
+		const captureCameraName = options.camera_name?.trim() || options.name;
+		const captureResult = await requestLiveBlenderCapture({
+			blendPath: manifest.blendPath,
+			viewName: options.name,
+			cameraObjectName: captureCameraName,
+			signal: options.signal,
+		});
+		cameraObjectName = captureResult.cameraObjectName;
+		cameraSettingsName = captureResult.cameraSettingsName;
 	} else {
+		const sceneInfo = await getSceneInfoFromManifest(options.cwd, manifest, {
+			includeObjects: false,
+			includeCollections: false,
+			includeMaterials: false,
+			includeCameras: true,
+			includeCameraSettings: false,
+			includeLights: false,
+			includeRenderSettings: false,
+			signal: options.signal,
+		});
 		for (const camera of sceneInfo.cameras) {
 			const candidate = getStringRecordValue(camera, "name");
 			if (candidate && candidate === options.source) {
-				cameraName = candidate;
+				cameraObjectName = candidate;
+				cameraSettingsName = getStringRecordValue(camera, "cameraSettingsName");
 				break;
 			}
 		}
 	}
 
-	if (!cameraName) {
+	if (!cameraObjectName) {
 		throw new Error(`Unable to resolve view source "${options.source}" to a camera in ${manifest.blendPath}`);
 	}
 
 	const savedView: BlenderSavedView = {
 		name: options.name,
-		cameraName,
+		cameraObjectName,
+		cameraSettingsName: cameraSettingsName ?? undefined,
 		source: options.source,
 		savedAt: nowIso(),
 	};
@@ -804,7 +1040,7 @@ export async function blenderRender(options: RenderOptions): Promise<RenderResul
 	const savedView = manifest.savedViews[view];
 	let cameraName: string | undefined;
 	if (savedView) {
-		cameraName = savedView.cameraName;
+		cameraName = getSavedViewCameraObjectName(savedView) ?? undefined;
 	} else if (view !== "active-camera") {
 		cameraName = view;
 	}

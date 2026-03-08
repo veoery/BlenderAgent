@@ -32,6 +32,29 @@ describe("built-in blender extension", () => {
 		expect(extension.handlers.has("resources_discover")).toBe(true);
 	});
 
+	it("allows blender_scene_info to target one or more categories", async () => {
+		const [factory] = getBuiltInBlenderExtensionFactories("vibe-blender");
+		const runtime = createExtensionRuntime();
+		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
+		const sceneInfoTool = extension.tools.get("blender_scene_info");
+		expect(sceneInfoTool).toBeDefined();
+		const properties = sceneInfoTool?.definition.parameters.properties as Record<string, unknown>;
+		expect(properties.categories).toBeDefined();
+		expect(JSON.stringify(properties.categories)).toContain("views");
+		expect(JSON.stringify(properties.categories)).toContain("cameraSettings");
+	});
+
+	it("allows blender_save_view to capture the live UI view into a dedicated camera", async () => {
+		const [factory] = getBuiltInBlenderExtensionFactories("vibe-blender");
+		const runtime = createExtensionRuntime();
+		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
+		const saveViewTool = extension.tools.get("blender_save_view");
+		expect(saveViewTool).toBeDefined();
+		const properties = saveViewTool?.definition.parameters.properties as Record<string, unknown>;
+		expect(properties.camera_name).toBeDefined();
+		expect(JSON.stringify(properties.source)).toContain("current Blender UI view");
+	});
+
 	it("ships bundled Blender skills", () => {
 		const skillsDir = getBundledBlenderSkillsDir();
 		expect(existsSync(skillsDir)).toBe(true);

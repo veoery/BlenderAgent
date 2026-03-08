@@ -158,6 +158,21 @@ export function getChangelogPath(): string {
 	return resolve(join(getPackageDir(), "CHANGELOG.md"));
 }
 
+/** Get path to bundled Blender assets directory */
+export function getBlenderAssetsDir(): string {
+	if (isBunBinary) {
+		return join(dirname(process.execPath), "blender");
+	}
+	const packageDir = getPackageDir();
+	const srcOrDist = existsSync(join(packageDir, "src")) ? "src" : "dist";
+	return join(packageDir, srcOrDist, "blender");
+}
+
+/** Get path to the bundled live Blender bridge script */
+export function getBundledBlenderBridgePath(): string {
+	return resolve(join(getBlenderAssetsDir(), "live-bridge.py"));
+}
+
 // =============================================================================
 // App Config (from package.json piConfig)
 // =============================================================================
@@ -174,6 +189,7 @@ const APP_ENV_PREFIX =
 		.replace(/[^A-Z0-9]/g, "_")
 		.replace(/^_+|_+$/g, "") || "PI";
 export const ENV_AGENT_DIR = `${APP_ENV_PREFIX}_CODING_AGENT_DIR`;
+export const ENV_BLENDER_BRIDGE_DIR = `${APP_ENV_PREFIX}_BLENDER_BRIDGE_DIR`;
 
 const DEFAULT_SHARE_VIEWER_URL = "https://pi.dev/session/";
 
@@ -227,6 +243,17 @@ export function getToolsDir(): string {
 /** Get path to managed binaries directory (fd, rg) */
 export function getBinDir(): string {
 	return join(getAgentDir(), "bin");
+}
+
+/** Get path to the live Blender bridge working directory */
+export function getBlenderBridgeDir(): string {
+	const envDir = process.env[ENV_BLENDER_BRIDGE_DIR];
+	if (envDir) {
+		if (envDir === "~") return homedir();
+		if (envDir.startsWith("~/")) return homedir() + envDir.slice(1);
+		return envDir;
+	}
+	return join(getAgentDir(), "blender-bridge");
 }
 
 /** Get path to prompt templates directory */

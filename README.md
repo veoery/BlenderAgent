@@ -104,6 +104,7 @@ outputs/TIMESTAMP/
 ├── model.blend
 ├── script.py
 └── iteration_01/
+    ├── scene-info.json
     ├── script.py
     ├── blender.log
     └── renders/
@@ -112,7 +113,58 @@ outputs/TIMESTAMP/
 
 The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running.
 The workspace root `critique.log` stores the render critique for each create/edit iteration.
+`blender_scene_info` writes `scene-info.json` into the current iteration folder.
+`blender_scene_info` can inspect all scene categories by default, or only a subset via `categories` such as `["objects"]`, `["cameras", "cameraSettings"]`, `["cameras", "lights"]`, `["views"]`, or the full set.
+`cameras` reports camera scene objects with transform data and their linked camera settings names.
+`cameraSettings` reports the camera data blocks with lens, clip, sensor, and ortho settings.
+`views` reports saved workspace views from the manifest.
+`blender_save_view` with `source="active-camera"` captures the current live Blender UI viewport into a dedicated camera object, sets it as `scene.camera`, saves the `.blend`, and stores the view name -> camera object mapping in the workspace manifest. This requires the Blender UI process launched by `vibe-blender` or another Blender session started with the bundled live bridge script.
 For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file.
+
+## Save Current View
+
+To save the current Blender viewport as a reusable render view:
+
+1. Start `vibe-blender` so Blender launches with the live bridge script loaded.
+2. Open the workspace `model.blend` in that bridge-enabled Blender session.
+3. Move a `3D Viewport` (`VIEW_3D`) to the exact view you want to save.
+4. Call `blender_save_view` with `source="active-camera"` and a saved view name.
+
+Example:
+
+```json
+{
+  "workspace": "outputs/modern_timber_house",
+  "name": "hero-front",
+  "source": "active-camera"
+}
+```
+
+Optional dedicated camera name:
+
+```json
+{
+  "workspace": "outputs/modern_timber_house",
+  "name": "hero-front",
+  "source": "active-camera",
+  "camera_name": "hero-front-cam"
+}
+```
+
+Later, render from that saved view:
+
+```json
+{
+  "workspace": "outputs/modern_timber_house",
+  "view": "hero-front"
+}
+```
+
+Notes:
+
+- The user does not need to manually save after adjusting the viewport; `blender_save_view` saves the `.blend` after capturing the view.
+- The open file must already be the workspace `model.blend`, not an unsaved new Blender scene.
+- If multiple `VIEW_3D` areas are open, vibe-blender captures the largest one.
 
 ## Design principles
 

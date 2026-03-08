@@ -141,15 +141,35 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_scene_info",
 			label: "Blender Scene Info",
 			description:
-				"Inspect the current Blender workspace and return structured scene metadata for planning or verification.",
+				"Inspect the current Blender workspace, write structured scene metadata into the current iteration folder, and return it for planning or verification.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
 				}),
+				categories: Type.Optional(
+					Type.Array(
+						Type.Union([
+							Type.Literal("objects"),
+							Type.Literal("collections"),
+							Type.Literal("materials"),
+							Type.Literal("cameras"),
+							Type.Literal("cameraSettings"),
+							Type.Literal("lights"),
+							Type.Literal("views"),
+							Type.Literal("renderSettings"),
+						]),
+						{
+							description:
+								"Optional scene info categories to inspect. Omit to inspect all categories. Provide one item for one category or multiple items for a subset.",
+							uniqueItems: true,
+						},
+					),
+				),
 				includeObjects: Type.Optional(Type.Boolean({ default: true })),
 				includeCollections: Type.Optional(Type.Boolean({ default: true })),
 				includeMaterials: Type.Optional(Type.Boolean({ default: true })),
 				includeCameras: Type.Optional(Type.Boolean({ default: true })),
+				includeCameraSettings: Type.Optional(Type.Boolean({ default: true })),
 				includeLights: Type.Optional(Type.Boolean({ default: true })),
 				includeRenderSettings: Type.Optional(Type.Boolean({ default: true })),
 			}),
@@ -157,10 +177,12 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 				const result = await blenderSceneInfo({
 					cwd: ctx.cwd,
 					workspace: params.workspace,
+					categories: params.categories,
 					includeObjects: params.includeObjects,
 					includeCollections: params.includeCollections,
 					includeMaterials: params.includeMaterials,
 					includeCameras: params.includeCameras,
+					includeCameraSettings: params.includeCameraSettings,
 					includeLights: params.includeLights,
 					includeRenderSettings: params.includeRenderSettings,
 					signal,
@@ -177,7 +199,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_save_view",
 			label: "Blender Save View",
 			description:
-				"Save a named render view in the workspace manifest by binding it to the active camera or an explicit camera object.",
+				"Save a named render view in the workspace manifest. With source=active-camera, capture the current live Blender UI viewport into a dedicated camera object; otherwise bind the view to an existing camera object.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
@@ -186,8 +208,15 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					description: "Saved view name to store in the workspace manifest.",
 				}),
 				source: Type.String({
-					description: 'Either "active-camera" or a camera object name already present in the scene.',
+					description:
+						'Either "active-camera" to capture the current Blender UI view, or a camera object name already present in the scene.',
 				}),
+				camera_name: Type.Optional(
+					Type.String({
+						description:
+							'Optional dedicated camera object name to use when source is "active-camera". Defaults to the saved view name.',
+					}),
+				),
 			}),
 			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
 				const result = await blenderSaveView({
@@ -195,6 +224,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					workspace: params.workspace,
 					name: params.name,
 					source: params.source,
+					camera_name: params.camera_name,
 					signal,
 				});
 

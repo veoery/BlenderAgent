@@ -6,7 +6,7 @@
  * Test with: npx tsx src/cli-new.ts [args...]
  */
 import { spawn } from "child_process";
-import { APP_NAME } from "./config.js";
+import { APP_NAME, ENV_BLENDER_BRIDGE_DIR, getBlenderBridgeDir, getBundledBlenderBridgePath } from "./config.js";
 import { main } from "./main.js";
 
 const DEFAULT_BLENDER_PATH = "/Applications/Blender.app/Contents/MacOS/Blender";
@@ -52,9 +52,15 @@ function shouldLaunchBlender(args: string[], noBlenderFlag: boolean): boolean {
 
 function launchBlender(): void {
 	const blenderPath = process.env.BLENDER_PATH || DEFAULT_BLENDER_PATH;
+	const bridgeScriptPath = getBundledBlenderBridgePath();
+	const bridgeDir = getBlenderBridgeDir();
 	try {
-		const child = spawn(blenderPath, [], {
+		const child = spawn(blenderPath, ["--python", bridgeScriptPath], {
 			detached: true,
+			env: {
+				...process.env,
+				[ENV_BLENDER_BRIDGE_DIR]: bridgeDir,
+			},
 			stdio: "ignore",
 		});
 		child.unref();

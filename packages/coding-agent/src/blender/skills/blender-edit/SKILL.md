@@ -24,6 +24,7 @@ Workflow:
 9. Call `blender_log_critique` after each critique to append the score, issues, and next action to `$workspace/critique.log`.
 10. If the total score is 8 or higher, present the result to the user and stop iterating.
 11. If the total score is below 8, do the next iteration based on the critique, up to the 5-iteration cap.
+12. Reuse the same explicit `workspace` across continuation turns.
 
 Rules:
 - Keep `workspace` explicit in every Blender tool call.
