@@ -7,6 +7,7 @@ import {
 	blenderRender,
 	blenderSaveView,
 	blenderSceneInfo,
+	blenderSessionContext,
 	blenderWorkspaceInit,
 	getBundledBlenderSkillsDir,
 } from "./runtime.js";
@@ -16,6 +17,7 @@ const BLENDER_WORKFLOW_GUIDANCE = [
 	"Prefer Blender tools over generic shell/file workflows for scene creation, editing, inspection, and rendering.",
 	"Keep the `workspace` argument explicit in every Blender tool call and reuse the same workspace across continuation turns.",
 	"Author Blender code in the workspace root script.py using the normal write/edit tools, then call blender_execute_python with script_path pointing to that global script.",
+	'If the user refers to "it", "this", the selected object, or the current view, inspect blender_session_context first so you resolve live Blender selection and viewport state before mutating.',
 	"Inspect before mutating when editing an existing scene, and render after meaningful scene changes that need visual verification.",
 	"For create and edit work, use a short ReAct loop: execute, render, critique, log the critique, then either stop when the result is good enough or iterate. Do at most 5 iterations for each new user instruction.",
 	"Do not restate tool schemas in prose. Use the tool definitions directly.",
@@ -127,6 +129,50 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					saveAfter: params.saveAfter,
 					timeoutSeconds: params.timeoutSeconds,
 					label: params.label,
+					signal,
+				});
+
+				return {
+					content: [{ type: "text", text: formatJsonResult(result) }],
+					details: result,
+				};
+			},
+		});
+
+		pi.registerTool({
+			name: "blender_session_context",
+			label: "Blender Session Context",
+			description:
+				"Inspect the current live Blender UI session to resolve the open blend, active scene, current mode, active object, selected objects, and viewport state before acting on ambiguous requests like 'update it' or 'render from here'.",
+			parameters: Type.Object({
+				workspace: Type.Optional(
+					Type.String({
+						description:
+							"Optional workspace path to compare against the live Blender session. Relative paths resolve from the current working directory.",
+					}),
+				),
+				include: Type.Optional(
+					Type.Array(
+						Type.Union([
+							Type.Literal("file"),
+							Type.Literal("scene"),
+							Type.Literal("selection"),
+							Type.Literal("mode"),
+							Type.Literal("viewport"),
+						]),
+						{
+							description:
+								"Optional live session categories to include. Omit to return the full live Blender session context.",
+							uniqueItems: true,
+						},
+					),
+				),
+			}),
+			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
+				const result = await blenderSessionContext({
+					cwd: ctx.cwd,
+					workspace: params.workspace,
+					include: params.include,
 					signal,
 				});
 

@@ -11,6 +11,7 @@
 - Added `blender_log_critique` and workspace `critique.log` support so Blender create/edit workflows can persist per-iteration scoring, issues, and next actions.
 - Added `scene-info.json` iteration artifacts so `blender_scene_info` persists inspection output into the current workspace iteration folder.
 - Added a live Blender bridge workflow for `blender_save_view(source="active-camera")`, so vibe-blender can capture the current UI viewport into a dedicated reusable camera object and render it later by saved view name.
+- Added `blender_session_context` so vibe-blender can inspect the live Blender UI session for the open blend, active object, selected objects, current mode, and viewport state before acting on ambiguous requests like "update it" or "render from here".
 
 ### Changed
 

@@ -162,3 +162,43 @@ export async function requestLiveBlenderRender(options: {
 		timeoutMs: options.timeoutMs,
 	});
 }
+
+export async function requestLiveBlenderSessionContext(options?: {
+	signal?: AbortSignal;
+	timeoutMs?: number;
+}): Promise<{
+	blendPath: string | null;
+	isSaved: boolean;
+	isDirty: boolean;
+	scene: {
+		name: string | null;
+		availableScenes: string[];
+		frameCurrent: number | null;
+		activeCameraName: string | null;
+	};
+	selection: {
+		activeObject: { name: string; type: string } | null;
+		selectedObjects: Array<{ name: string; type: string }>;
+		selectedObjectCount: number;
+	};
+	mode: {
+		mode: string | null;
+		activeObjectType: string | null;
+	};
+	viewport: {
+		hasViewport: boolean;
+		areaSize: number | null;
+		viewPerspective: string | null;
+		shadingType: string | null;
+		cameraName: string | null;
+		isCameraView: boolean;
+	};
+}> {
+	return await requestLiveBlenderBridge({
+		payload: {
+			type: "get-session-context",
+		},
+		signal: options?.signal,
+		timeoutMs: options?.timeoutMs,
+	});
+}

@@ -24,6 +24,7 @@ describe("built-in blender extension", () => {
 
 		expect(extension.tools.has("blender_workspace_init")).toBe(true);
 		expect(extension.tools.has("blender_execute_python")).toBe(true);
+		expect(extension.tools.has("blender_session_context")).toBe(true);
 		expect(extension.tools.has("blender_scene_info")).toBe(true);
 		expect(extension.tools.has("blender_save_view")).toBe(true);
 		expect(extension.tools.has("blender_render")).toBe(true);
@@ -32,8 +33,22 @@ describe("built-in blender extension", () => {
 		expect(extension.handlers.has("resources_discover")).toBe(true);
 		expect(extension.tools.get("blender_workspace_init")?.definition.description).toContain("auto-open");
 		expect(extension.tools.get("blender_execute_python")?.definition.description).toContain("live bridge-enabled");
+		expect(extension.tools.get("blender_session_context")?.definition.description).toContain("selected objects");
 		expect(extension.tools.get("blender_render")?.definition.description).toContain("material preview");
 		expect(extension.tools.get("blender_log_critique")?.definition.description).toContain("view adequacy");
+	});
+
+	it("allows blender_session_context to target one or more live context categories", async () => {
+		const [factory] = getBuiltInBlenderExtensionFactories("vibe-blender");
+		const runtime = createExtensionRuntime();
+		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
+		const sessionContextTool = extension.tools.get("blender_session_context");
+		expect(sessionContextTool).toBeDefined();
+		const properties = sessionContextTool?.definition.parameters.properties as Record<string, unknown>;
+		expect(properties.workspace).toBeDefined();
+		expect(properties.include).toBeDefined();
+		expect(JSON.stringify(properties.include)).toContain("selection");
+		expect(JSON.stringify(properties.include)).toContain("viewport");
 	});
 
 	it("allows blender_scene_info to target one or more categories", async () => {

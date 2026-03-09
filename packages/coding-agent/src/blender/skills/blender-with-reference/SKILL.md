@@ -11,9 +11,10 @@ Workflow:
 1. Combine this skill with `blender-create` or `blender-edit` depending on whether the scene is new or existing.
 2. Extract the most important shape, composition, material, and lighting cues from the references.
 3. Keep those cues visible in your plan while generating Blender Python.
-4. When viewpoint matters, either update the agent-managed evaluation camera in `$workspace/script.py` before execution or capture a user-set viewport with `blender_save_view`. Better view alignment makes critique and iteration much more reliable.
-5. Render and compare the result against the references after significant changes.
-6. When critiquing a create/edit iteration, include reference mismatch details in the `issues` you log to `blender_log_critique`, and use its `viewAdequacy` judgment to record when the current render view is too weak for a fair reference comparison.
+4. If the user is framing a comparison manually or referring to the currently selected object or current view, inspect `blender_session_context` first so the target and viewpoint are explicit.
+5. When viewpoint matters, either update the agent-managed evaluation camera in `$workspace/script.py` before execution or capture a user-set viewport with `blender_save_view`. Better view alignment makes critique and iteration much more reliable.
+6. Render and compare the result against the references after significant changes.
+7. When critiquing a create/edit iteration, include reference mismatch details in the `issues` you log to `blender_log_critique`, and use its `viewAdequacy` judgment to record when the current render view is too weak for a fair reference comparison.
 
 Rules:
 - Treat references as constraints for planning and evaluation.

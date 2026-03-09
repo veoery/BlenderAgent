@@ -4,7 +4,7 @@
 
 `vibe-blender` is a Blender-native agent workflow built on the pi coding-agent runtime.
 
-The model works through Blender-specific tools instead of subagents. It can initialize a managed workspace, execute Blender Python, inspect scene state, save named views, and render images while keeping a persistent `model.blend` in one workspace.
+The model works through Blender-specific tools instead of subagents. It can initialize a managed workspace, inspect live Blender session context, execute Blender Python, inspect scene state, save named views, and render images while keeping a persistent `model.blend` in one workspace.
 
 ## Current direction
 
@@ -21,6 +21,7 @@ When you start `vibe-blender`, these Blender tools are loaded automatically:
 
 - `blender_workspace_init`
 - `blender_execute_python`
+- `blender_session_context`
 - `blender_scene_info`
 - `blender_save_view`
 - `blender_render`
@@ -115,6 +116,7 @@ outputs/TIMESTAMP/
 The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running inside the live bridge-enabled Blender UI session for that workspace, so scene edits stay visible in the open Blender window without reopening the file.
 The workspace root `critique.log` stores the render critique for each create/edit iteration, including the non-scored view adequacy judgment for the current render perspective.
 `blender_scene_info` writes `scene-info.json` into the current iteration folder.
+`blender_session_context` inspects the live Blender UI session for transient context such as the open `.blend`, active object, selected objects, current mode, and current viewport.
 `blender_scene_info` can inspect all scene categories by default, or only a subset via `categories` such as `["objects"]`, `["cameras", "cameraSettings"]`, `["cameras", "lights"]`, `["views"]`, or the full set.
 `cameras` reports camera scene objects with transform data and their linked camera settings names.
 `cameraSettings` reports the camera data blocks with lens, clip, sensor, and ortho settings.
@@ -122,6 +124,36 @@ The workspace root `critique.log` stores the render critique for each create/edi
 `blender_save_view` with `source="active-camera"` captures the current live Blender UI viewport into a dedicated camera object, sets it as `scene.camera`, saves the `.blend`, and stores the view name -> camera object mapping in the workspace manifest. This requires the Blender UI process launched by `vibe-blender` or another Blender session started with the bundled live bridge script.
 `blender_render` now defaults to `mode="material-preview"`, which uses Blender's viewport material preview render through the live bridge. Use `mode="still"` when you explicitly want the older final background render path.
 For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file. If the bridge-enabled Blender session is not already showing that workspace `model.blend`, vibe-blender will open it automatically unless Blender has unsaved changes in another scene.
+
+## Live Session Context
+
+Use `blender_session_context` when the user refers to live Blender UI state such as:
+
+- "update it"
+- "change the selected object"
+- "render from here"
+- "use the current view"
+
+It reports transient bridge-enabled Blender session state such as:
+
+- open `.blend` path
+- whether the file is dirty
+- active scene and render camera
+- active object
+- selected objects
+- current Blender mode
+- primary `VIEW_3D` viewport summary
+
+Example:
+
+```json
+{
+  "workspace": "outputs/modern_timber_house",
+  "include": ["selection", "mode", "viewport"]
+}
+```
+
+Use this tool to resolve ambiguous references before editing code. It does not replace explicit `workspace` arguments for other Blender tools.
 
 ## Save Current View
 

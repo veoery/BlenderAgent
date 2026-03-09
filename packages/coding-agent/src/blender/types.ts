@@ -7,6 +7,46 @@ export interface BlenderSavedView {
 	savedAt: string;
 }
 
+export type BlenderSessionContextCategory = "file" | "scene" | "selection" | "mode" | "viewport";
+
+export interface BlenderSessionObjectRef {
+	name: string;
+	type: string;
+}
+
+export interface BlenderSessionFileContext {
+	blendPath: string | null;
+	isSaved: boolean;
+	isDirty: boolean;
+}
+
+export interface BlenderSessionSceneContext {
+	name: string | null;
+	availableScenes: string[];
+	frameCurrent: number | null;
+	activeCameraName: string | null;
+}
+
+export interface BlenderSessionSelectionContext {
+	activeObject: BlenderSessionObjectRef | null;
+	selectedObjects: BlenderSessionObjectRef[];
+	selectedObjectCount: number;
+}
+
+export interface BlenderSessionModeContext {
+	mode: string | null;
+	activeObjectType: string | null;
+}
+
+export interface BlenderSessionViewportContext {
+	hasViewport: boolean;
+	areaSize: number | null;
+	viewPerspective: string | null;
+	shadingType: string | null;
+	cameraName: string | null;
+	isCameraView: boolean;
+}
+
 export interface BlenderRenderOutput {
 	path: string;
 	view: string;
@@ -114,6 +154,26 @@ export interface SceneInfoSelection {
 	includeLights: boolean;
 	includeViews: boolean;
 	includeRenderSettings: boolean;
+}
+
+export interface SessionContextOptions {
+	cwd: string;
+	workspace?: string;
+	include?: BlenderSessionContextCategory[];
+	signal?: AbortSignal;
+}
+
+export interface SessionContextResult {
+	requestedWorkspacePath: string | null;
+	requestedBlendPath: string | null;
+	workspacePath: string | null;
+	matchesWorkspace: boolean | null;
+	warnings: string[];
+	file: BlenderSessionFileContext | null;
+	scene: BlenderSessionSceneContext | null;
+	selection: BlenderSessionSelectionContext | null;
+	mode: BlenderSessionModeContext | null;
+	viewport: BlenderSessionViewportContext | null;
 }
 
 export interface SaveViewOptions {

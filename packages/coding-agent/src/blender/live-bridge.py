@@ -31,6 +31,13 @@ def write_response(request_id, payload):
 
 
 def find_viewport_context():
+    best = find_optional_viewport_context()
+    if best is None:
+        raise RuntimeError("No live VIEW_3D viewport is open in Blender.")
+    return best
+
+
+def find_optional_viewport_context():
     best = None
 
     for window in bpy.context.window_manager.windows:
@@ -62,10 +69,40 @@ def find_viewport_context():
             if best is None or candidate["area_size"] > best["area_size"]:
                 best = candidate
 
-    if best is None:
-        raise RuntimeError("No live VIEW_3D viewport is open in Blender.")
-
     return best
+
+
+def object_ref(obj):
+    if obj is None:
+        return None
+    return {
+        "name": obj.name,
+        "type": obj.type,
+    }
+
+
+def summarize_viewport(viewport):
+    if viewport is None:
+        return {
+            "hasViewport": False,
+            "areaSize": None,
+            "viewPerspective": None,
+            "shadingType": None,
+            "cameraName": None,
+            "isCameraView": False,
+        }
+
+    region_3d = viewport["region_3d"]
+    space = viewport["space"]
+    view_camera = getattr(space, "camera", None)
+    return {
+        "hasViewport": True,
+        "areaSize": int(viewport["area_size"]),
+        "viewPerspective": region_3d.view_perspective,
+        "shadingType": getattr(space.shading, "type", None),
+        "cameraName": view_camera.name if view_camera is not None and view_camera.type == "CAMERA" else None,
+        "isCameraView": region_3d.view_perspective == "CAMERA",
+    }
 
 
 def ensure_render_camera(scene, camera_name):
@@ -313,8 +350,39 @@ def handle_render(request):
     }
 
 
+def handle_get_session_context(_request):
+    viewport = find_optional_viewport_context()
+    scene = viewport["scene"] if viewport is not None else bpy.context.scene
+    active_object = bpy.context.view_layer.objects.active if bpy.context.view_layer else bpy.context.active_object
+    selected_objects = [object_ref(obj) for obj in bpy.context.selected_objects]
+
+    return {
+        "blendPath": bpy.data.filepath if bpy.data.filepath else None,
+        "isSaved": bool(bpy.data.filepath),
+        "isDirty": bool(bpy.data.is_dirty),
+        "scene": {
+            "name": scene.name if scene else None,
+            "availableScenes": [candidate.name for candidate in bpy.data.scenes],
+            "frameCurrent": int(scene.frame_current) if scene else None,
+            "activeCameraName": scene.camera.name if scene and scene.camera else None,
+        },
+        "selection": {
+            "activeObject": object_ref(active_object),
+            "selectedObjects": [obj for obj in selected_objects if obj is not None],
+            "selectedObjectCount": len(selected_objects),
+        },
+        "mode": {
+            "mode": bpy.context.mode if hasattr(bpy.context, "mode") else None,
+            "activeObjectType": active_object.type if active_object is not None else None,
+        },
+        "viewport": summarize_viewport(viewport),
+    }
+
+
 def handle_request(request):
     request_type = request.get("type")
+    if request_type == "get-session-context":
+        return handle_get_session_context(request)
     if request_type == "open-blend":
         return handle_open_blend(request)
     if request_type == "capture-view":
