@@ -23,6 +23,7 @@
 - Changed the live Blender bridge to auto-open the requested workspace `model.blend` when the current bridge session is still on the default startup scene or another clean file, while still refusing to discard unsaved unrelated Blender edits.
 - Changed `blender_workspace_init` to auto-open the workspace `model.blend` in the live Blender session when possible, instead of only creating the workspace on disk.
 - Changed `blender_render` to default to a live Blender material preview viewport render (`mode="material-preview"`), while keeping the previous final background render path available via `mode="still"`.
+- Refactored the Blender runtime into focused modules for workspace, bridge, execute, render, save-view, scene-info, critique, shared types, and shared utilities, leaving `runtime.ts` as a thin public re-export layer.
 
 ### Fixed
 
