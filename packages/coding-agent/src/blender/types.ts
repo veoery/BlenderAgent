@@ -166,6 +166,7 @@ export interface CritiqueLogOptions {
 	materials: number;
 	completeness: number;
 	quality: number;
+	viewAdequacy: string;
 	issues: string[];
 	nextAction: string;
 }
@@ -181,6 +182,7 @@ export interface CritiqueLogResult {
 		materials: number;
 		completeness: number;
 		quality: number;
+		viewAdequacy: string;
 		issues: string[];
 		nextAction: string;
 		loggedAt: string;

@@ -297,7 +297,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_log_critique",
 			label: "Blender Log Critique",
 			description:
-				"Append a structured critique entry to the workspace critique.log using the 0-10 Blender iteration rubric.",
+				"Append a structured critique entry to the workspace critique.log using the 0-10 Blender iteration rubric, plus a view adequacy judgment for the current render perspective.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
@@ -332,6 +332,10 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					minimum: 0,
 					maximum: 2,
 				}),
+				viewAdequacy: Type.String({
+					description:
+						"Non-scored judgment of whether the current render view is good enough for evaluation, including any framing, coverage, or perspective problems.",
+				}),
 				issues: Type.Array(
 					Type.String({
 						description: "Concrete problems found in the current render or scene.",
@@ -351,6 +355,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					materials: params.materials,
 					completeness: params.completeness,
 					quality: params.quality,
+					viewAdequacy: params.viewAdequacy,
 					issues: params.issues,
 					nextAction: params.nextAction,
 				});

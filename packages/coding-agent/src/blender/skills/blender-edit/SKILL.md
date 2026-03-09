@@ -13,21 +13,28 @@ Workflow:
 3. For each new user instruction, follow a ReAct-style loop with at most 5 iterations:
 4. Edit the canonical workspace script at `$workspace/script.py` with the normal `edit` tool.
 5. Always edit based on the current global script instead of drafting a disconnected replacement unless the current script is unusable.
-6. Run `blender_execute_python` with `script_path` pointing to `$workspace/script.py`.
-7. Render with `blender_render` after meaningful scene changes.
-8. Critique the latest render against the user request and any references using this rubric:
+6. If the render perspective needs improvement and the agent is managing its own evaluation views, update or create the evaluation camera in `$workspace/script.py` before execution.
+7. Run `blender_execute_python` with `script_path` pointing to `$workspace/script.py`.
+8. If the user is manually setting a viewport perspective, capture it with `blender_save_view`. Otherwise render from the agent-managed evaluation camera/view.
+9. Render with `blender_render` after meaningful scene changes.
+10. Critique the latest render against the user request and any references using this rubric:
    - Accuracy (0-2): Does the result match the request/reference?
    - Geometry & Proportions (0-2): Realistic dimensions, parts fit together?
    - Materials & Appearance (0-2): Correct colors, surface finish?
    - Completeness (0-2): All components present, nothing missing?
    - Quality (0-2): Clean geometry, proper shading, no artifacts?
-9. Call `blender_log_critique` after each critique to append the score, issues, and next action to `$workspace/critique.log`.
-10. If the total score is 8 or higher, present the result to the user and stop iterating.
-11. If the total score is below 8, do the next iteration based on the critique, up to the 5-iteration cap.
-12. Reuse the same explicit `workspace` across continuation turns.
+   - View adequacy: Also judge whether the current render view is good enough to evaluate the edit. If important parts are hidden or the framing is weak, include creating or changing an agent-owned render view in the next action.
+11. Call `blender_log_critique` after each critique to append the score, view adequacy judgment, issues, and next action to `$workspace/critique.log`.
+12. If the total score is 8 or higher, present the result to the user and stop iterating.
+13. If the total score is below 8, do the next iteration based on the critique, up to the 5-iteration cap.
+14. Reuse the same explicit `workspace` across continuation turns.
 
 Rules:
 - Keep `workspace` explicit in every Blender tool call.
 - Prefer small, reversible edits over rebuilding the whole scene.
 - Base each new iteration on the critique from the prior render.
+- Treat camera/view management as part of the edit loop. If the current render angle is weak, save or update a better view before judging whether the Python edit worked.
+- Do not modify user-created views or cameras unless the user explicitly asks. If the current views are insufficient, create a new agent-owned saved view/camera for evaluation.
+- If the user does not specify a render view, you may manage agent-owned evaluation views such as `agent_eval_main`, `agent_eval_wide`, or `agent_eval_detail`, and update them when renders show poor framing or miss important parts of the scene.
+- If the user specifies a render view or camera, treat it as locked unless the user explicitly asks you to change it.
 - Explain what changed and what remains unchanged.

@@ -15,6 +15,9 @@ export async function blenderLogCritique(options: CritiqueLogOptions): Promise<C
 	validateCritiqueScore("materials", options.materials);
 	validateCritiqueScore("completeness", options.completeness);
 	validateCritiqueScore("quality", options.quality);
+	if (options.viewAdequacy.trim().length === 0) {
+		throw new Error('Critique field "viewAdequacy" must be a non-empty string.');
+	}
 
 	const manifest = await loadWorkspaceManifest(options.cwd, options.workspace);
 	const critiqueLogPath = await ensureWorkspaceCritiqueLogExists(manifest.workspacePath);
@@ -30,6 +33,7 @@ export async function blenderLogCritique(options: CritiqueLogOptions): Promise<C
 		materials: options.materials,
 		completeness: options.completeness,
 		quality: options.quality,
+		viewAdequacy: options.viewAdequacy,
 		issues: options.issues,
 		nextAction: options.nextAction,
 		loggedAt,
@@ -44,6 +48,7 @@ export async function blenderLogCritique(options: CritiqueLogOptions): Promise<C
 		`Materials & Appearance: ${options.materials}/2`,
 		`Completeness: ${options.completeness}/2`,
 		`Quality: ${options.quality}/2`,
+		`View adequacy: ${options.viewAdequacy}`,
 		"Issues:",
 		...(options.issues.length > 0 ? options.issues.map((issue) => `- ${issue}`) : ["- none"]),
 		`Next action: ${options.nextAction}`,

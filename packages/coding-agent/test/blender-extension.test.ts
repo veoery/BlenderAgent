@@ -33,6 +33,7 @@ describe("built-in blender extension", () => {
 		expect(extension.tools.get("blender_workspace_init")?.definition.description).toContain("auto-open");
 		expect(extension.tools.get("blender_execute_python")?.definition.description).toContain("live bridge-enabled");
 		expect(extension.tools.get("blender_render")?.definition.description).toContain("material preview");
+		expect(extension.tools.get("blender_log_critique")?.definition.description).toContain("view adequacy");
 	});
 
 	it("allows blender_scene_info to target one or more categories", async () => {
@@ -56,6 +57,17 @@ describe("built-in blender extension", () => {
 		const properties = saveViewTool?.definition.parameters.properties as Record<string, unknown>;
 		expect(properties.camera_name).toBeDefined();
 		expect(JSON.stringify(properties.source)).toContain("current Blender UI view");
+	});
+
+	it("requires blender_log_critique to record view adequacy", async () => {
+		const [factory] = getBuiltInBlenderExtensionFactories("vibe-blender");
+		const runtime = createExtensionRuntime();
+		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
+		const critiqueTool = extension.tools.get("blender_log_critique");
+		expect(critiqueTool).toBeDefined();
+		const properties = critiqueTool?.definition.parameters.properties as Record<string, unknown>;
+		expect(properties.viewAdequacy).toBeDefined();
+		expect(JSON.stringify(properties.viewAdequacy)).toContain("render view");
 	});
 
 	it("ships bundled Blender skills", () => {

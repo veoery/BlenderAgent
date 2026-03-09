@@ -113,7 +113,7 @@ outputs/TIMESTAMP/
 ```
 
 The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running inside the live bridge-enabled Blender UI session for that workspace, so scene edits stay visible in the open Blender window without reopening the file.
-The workspace root `critique.log` stores the render critique for each create/edit iteration.
+The workspace root `critique.log` stores the render critique for each create/edit iteration, including the non-scored view adequacy judgment for the current render perspective.
 `blender_scene_info` writes `scene-info.json` into the current iteration folder.
 `blender_scene_info` can inspect all scene categories by default, or only a subset via `categories` such as `["objects"]`, `["cameras", "cameraSettings"]`, `["cameras", "lights"]`, `["views"]`, or the full set.
 `cameras` reports camera scene objects with transform data and their linked camera settings names.
