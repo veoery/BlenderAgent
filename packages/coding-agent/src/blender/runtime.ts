@@ -12,6 +12,7 @@ const WORKSPACE_SCRIPT_FILE = "script.py";
 const CRITIQUE_LOG_FILE = "critique.log";
 const DEFAULT_RENDER_EXTENSION = ".png";
 const LIVE_BRIDGE_TIMEOUT_MS = 30_000;
+const LIVE_BRIDGE_INIT_TIMEOUT_MS = 5_000;
 const LIVE_BRIDGE_POLL_MS = 200;
 
 export interface BlenderSavedView {
@@ -60,6 +61,8 @@ export interface WorkspaceInitResult {
 	manifestPath: string;
 	iteration: number;
 	created: boolean;
+	openedInLiveBlender?: boolean;
+	liveBlenderMessage?: string;
 }
 
 export interface ExecutePythonOptions {
@@ -480,13 +483,11 @@ async function delay(ms: number, signal?: AbortSignal): Promise<void> {
 	});
 }
 
-async function requestLiveBlenderCapture(options: {
-	blendPath: string;
-	viewName: string;
-	cameraObjectName: string;
+async function requestLiveBlenderBridge<T>(options: {
+	payload: Record<string, unknown>;
 	signal?: AbortSignal;
 	timeoutMs?: number;
-}): Promise<{ cameraObjectName: string; cameraSettingsName: string | null; activeCameraName: string | null }> {
+}): Promise<T> {
 	const { requestsDir, responsesDir } = getLiveBridgePaths();
 	await mkdir(requestsDir, { recursive: true });
 	await mkdir(responsesDir, { recursive: true });
@@ -500,11 +501,7 @@ async function requestLiveBlenderCapture(options: {
 		JSON.stringify(
 			{
 				id: requestId,
-				type: "capture-view",
-				blendPath: options.blendPath,
-				viewName: options.viewName,
-				cameraObjectName: options.cameraObjectName,
-				cameraSettingsName: `${options.cameraObjectName}.settings`,
+				...options.payload,
 			},
 			null,
 			2,
@@ -519,14 +516,7 @@ async function requestLiveBlenderCapture(options: {
 			const responseRaw = await readFile(responsePath, "utf-8");
 			await rm(responsePath, { force: true });
 			const response = JSON.parse(responseRaw) as
-				| {
-						ok: true;
-						result: {
-							cameraObjectName: string;
-							cameraSettingsName: string | null;
-							activeCameraName: string | null;
-						};
-				  }
+				| { ok: true; result: T }
 				| { ok: false; error?: string; traceback?: string };
 			if (!response.ok) {
 				const details = response.traceback ? `\n\n${response.traceback}` : "";
@@ -541,6 +531,68 @@ async function requestLiveBlenderCapture(options: {
 	throw new Error(
 		"Timed out waiting for the live Blender bridge. Keep Blender open with the vibe-blender bridge script loaded and the workspace .blend open in the UI.",
 	);
+}
+
+async function requestLiveBlenderCapture(options: {
+	blendPath: string;
+	viewName: string;
+	cameraObjectName: string;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+}): Promise<{ cameraObjectName: string; cameraSettingsName: string | null; activeCameraName: string | null }> {
+	return await requestLiveBlenderBridge({
+		payload: {
+			type: "capture-view",
+			blendPath: options.blendPath,
+			viewName: options.viewName,
+			cameraObjectName: options.cameraObjectName,
+			cameraSettingsName: `${options.cameraObjectName}.settings`,
+		},
+		signal: options.signal,
+		timeoutMs: options.timeoutMs,
+	});
+}
+
+async function requestLiveBlenderExecutePython(options: {
+	blendPath: string;
+	workspacePath: string;
+	iterationPath: string;
+	userScriptPath: string;
+	saveBeforePath?: string;
+	saveAfter: boolean;
+	label?: string;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+}): Promise<{ stdout: string; stderr: string; exitCode: number; changed: boolean }> {
+	return await requestLiveBlenderBridge({
+		payload: {
+			type: "execute-python",
+			blendPath: options.blendPath,
+			workspacePath: options.workspacePath,
+			iterationPath: options.iterationPath,
+			userScriptPath: options.userScriptPath,
+			saveBeforePath: options.saveBeforePath,
+			saveAfter: options.saveAfter,
+			label: options.label,
+		},
+		signal: options.signal,
+		timeoutMs: options.timeoutMs,
+	});
+}
+
+async function requestLiveBlenderOpenBlend(options: {
+	blendPath: string;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+}): Promise<{ blendPath: string }> {
+	return await requestLiveBlenderBridge({
+		payload: {
+			type: "open-blend",
+			blendPath: options.blendPath,
+		},
+		signal: options.signal,
+		timeoutMs: options.timeoutMs,
+	});
 }
 
 function parseJsonBlock(stdout: string): unknown {
@@ -739,39 +791,6 @@ print("__PI_BLENDER_JSON_END__")
 `;
 }
 
-function buildExecuteScript(): string {
-	return `
-import bpy
-import json
-import sys
-import traceback
-
-payload = json.loads(sys.argv[sys.argv.index("--") + 1])
-globals_dict = {
-    "__name__": "__main__",
-    "OUTPUT_BLEND_PATH": payload["outputBlendPath"],
-    "WORKSPACE_PATH": payload["workspacePath"],
-    "ITERATION_PATH": payload["iterationPath"],
-}
-
-try:
-    with open(payload["userScriptPath"], "r", encoding="utf-8") as handle:
-        code = handle.read()
-    exec(compile(code, payload["userScriptPath"], "exec"), globals_dict)
-    if payload.get("saveAfter", True):
-        bpy.ops.wm.save_as_mainfile(filepath=payload["outputBlendPath"])
-    print("__PI_BLENDER_JSON_START__")
-    print(json.dumps({
-        "changed": True,
-        "outputBlendPath": payload["outputBlendPath"],
-    }))
-    print("__PI_BLENDER_JSON_END__")
-except Exception:
-    traceback.print_exc()
-    raise
-`;
-}
-
 function buildRenderScript(): string {
 	return `
 import bpy
@@ -872,7 +891,26 @@ export function getBundledBlenderSkillsDir(): string {
 }
 
 export async function blenderWorkspaceInit(options: WorkspaceInitOptions): Promise<WorkspaceInitResult> {
-	return await ensureWorkspaceInitialized(options);
+	const result = await ensureWorkspaceInitialized(options);
+	try {
+		await requestLiveBlenderOpenBlend({
+			blendPath: result.blendPath,
+			signal: options.signal,
+			timeoutMs: LIVE_BRIDGE_INIT_TIMEOUT_MS,
+		});
+		return {
+			...result,
+			openedInLiveBlender: true,
+			liveBlenderMessage: "Opened workspace blend in the live Blender session.",
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			...result,
+			openedInLiveBlender: false,
+			liveBlenderMessage: `Workspace created, but the live Blender session did not open it automatically: ${message}`,
+		};
+	}
 }
 
 export async function blenderExecutePython(options: ExecutePythonOptions): Promise<ExecutePythonResult> {
@@ -901,31 +939,21 @@ export async function blenderExecutePython(options: ExecutePythonOptions): Promi
 	const logPath = join(iterationDir, "blender.log");
 	await copyFile(sourceScriptPath, scriptPath);
 
-	if (options.saveBefore) {
-		await copyFile(manifest.blendPath, join(iterationDir, "model.before.blend"));
-	}
-
-	const wrapperScriptPath = await writeJsonTempFile("vibe-blender-exec-", buildExecuteScript());
-	const result = await runBlenderProcess({
-		cwd: options.cwd,
+	const result = await requestLiveBlenderExecutePython({
 		blendPath: manifest.blendPath,
-		scriptPath: wrapperScriptPath,
-		payload: {
-			outputBlendPath: manifest.blendPath,
-			workspacePath: manifest.workspacePath,
-			iterationPath: iterationDir,
-			userScriptPath: scriptPath,
-			saveAfter: options.saveAfter ?? true,
-			label: options.label,
-		},
+		workspacePath: manifest.workspacePath,
+		iterationPath: iterationDir,
+		userScriptPath: scriptPath,
+		saveBeforePath: options.saveBefore ? join(iterationDir, "model.before.blend") : undefined,
+		saveAfter: options.saveAfter ?? true,
+		label: options.label,
 		timeoutMs: (options.timeoutSeconds ?? 120) * 1000,
 		signal: options.signal,
 	});
-	await cleanupTempFile(wrapperScriptPath);
 
 	await writeFile(logPath, `${result.stdout}${result.stderr}`, "utf-8");
-	if (result.code !== 0) {
-		throw new Error(result.stderr.trim() || result.stdout.trim() || `Blender exited with code ${result.code}`);
+	if (result.exitCode !== 0) {
+		throw new Error(result.stderr.trim() || result.stdout.trim() || `Blender exited with code ${result.exitCode}`);
 	}
 
 	manifest.latestIteration = iteration;
@@ -941,8 +969,8 @@ export async function blenderExecutePython(options: ExecutePythonOptions): Promi
 		logPath,
 		stdout: result.stdout,
 		stderr: result.stderr,
-		exitCode: result.code,
-		changed: true,
+		exitCode: result.exitCode,
+		changed: result.changed,
 	};
 }
 

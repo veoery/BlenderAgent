@@ -18,7 +18,10 @@
 - Rewrote Blender-facing root docs around the tool-first workspace workflow instead of subagent setup.
 - Renamed the bundled Blender skills to `blender-create`, `blender-edit`, `blender-analyze`, and `blender-with-reference`, and updated create/edit guidance to use a render-critique iteration loop capped at 5 passes per user instruction.
 - Changed `blender_execute_python` to execute from an existing workspace script via `script_path` instead of inline script content, so Blender scripts are authored through the normal `write`/`edit` tools and then snapshotted into iteration folders.
+- Changed `blender_execute_python` to run inside the live bridge-enabled Blender UI session for the workspace, so scene edits stay visible in the open Blender window instead of being applied by a separate background Blender process.
 - Changed Blender scene inspection and saved-view modeling to distinguish camera objects from camera settings, and to back saved views with dedicated camera objects instead of a thin camera-name alias.
+- Changed the live Blender bridge to auto-open the requested workspace `model.blend` when the current bridge session is still on the default startup scene or another clean file, while still refusing to discard unsaved unrelated Blender edits.
+- Changed `blender_workspace_init` to auto-open the workspace `model.blend` in the live Blender session when possible, instead of only creating the workspace on disk.
 
 ### Fixed
 

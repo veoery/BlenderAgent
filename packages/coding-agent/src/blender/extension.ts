@@ -39,7 +39,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_workspace_init",
 			label: "Blender Workspace Init",
 			description:
-				"Create or reopen a managed Blender workspace with a persistent model.blend and workspace manifest.",
+				"Create or reopen a managed Blender workspace with a persistent model.blend and workspace manifest, and auto-open that blend in the live Blender session when available.",
 			parameters: Type.Object({
 				workspace: Type.Optional(
 					Type.String({
@@ -85,7 +85,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_execute_python",
 			label: "Blender Execute Python",
 			description:
-				"Copy the workspace root Blender script into the current iteration folder, execute it against the workspace blend file, and persist the updated model.blend.",
+				"Copy the workspace root Blender script into the current iteration folder, execute it inside the live bridge-enabled Blender session for the workspace, and persist the updated model.blend so the UI stays in sync.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",

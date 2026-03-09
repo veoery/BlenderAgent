@@ -1,5 +1,8 @@
+import contextlib
+import io
 import json
 import os
+import shutil
 import traceback
 
 import bpy
@@ -126,15 +129,40 @@ def align_camera_to_view(viewport, camera_object):
     bpy.context.view_layer.update()
 
 
-def handle_capture_view(request):
+def ensure_requested_blend_open(request):
     requested_blend_path = os.path.abspath(request["blendPath"])
+    if not os.path.exists(requested_blend_path):
+        raise RuntimeError(f'Workspace blend file does not exist: "{requested_blend_path}".')
+
     current_blend_path = os.path.abspath(bpy.data.filepath) if bpy.data.filepath else ""
-    if not current_blend_path:
-        raise RuntimeError("The open Blender file is unsaved. Save the workspace .blend in Blender first.")
-    if current_blend_path != requested_blend_path:
+    if current_blend_path == requested_blend_path:
+        return requested_blend_path
+
+    if bpy.data.is_dirty:
+        current_label = current_blend_path or "the current unsaved Blender scene"
         raise RuntimeError(
-            f'Open Blender file "{current_blend_path}" does not match requested workspace blend "{requested_blend_path}".'
+            f'Blender has unsaved changes in {current_label}. Save or discard them before vibe-blender can switch to "{requested_blend_path}".'
         )
+
+    bpy.ops.wm.open_mainfile(filepath=requested_blend_path)
+    loaded_blend_path = os.path.abspath(bpy.data.filepath) if bpy.data.filepath else ""
+    if loaded_blend_path != requested_blend_path:
+        raise RuntimeError(
+            f'Failed to open requested workspace blend "{requested_blend_path}". Blender is still showing "{loaded_blend_path or "an unsaved scene"}".'
+        )
+
+    return requested_blend_path
+
+
+def handle_open_blend(request):
+    requested_blend_path = ensure_requested_blend_open(request)
+    return {
+        "blendPath": requested_blend_path,
+    }
+
+
+def handle_capture_view(request):
+    ensure_requested_blend_open(request)
 
     viewport = find_viewport_context()
     scene = viewport["scene"]
@@ -164,10 +192,58 @@ def handle_capture_view(request):
     }
 
 
+def handle_execute_python(request):
+    requested_blend_path = ensure_requested_blend_open(request)
+    save_before_path = request.get("saveBeforePath")
+    if save_before_path:
+        bpy.ops.wm.save_mainfile()
+        os.makedirs(os.path.dirname(save_before_path), exist_ok=True)
+        shutil.copyfile(requested_blend_path, save_before_path)
+
+    globals_dict = {
+        "__name__": "__main__",
+        "OUTPUT_BLEND_PATH": requested_blend_path,
+        "WORKSPACE_PATH": request["workspacePath"],
+        "ITERATION_PATH": request["iterationPath"],
+    }
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    exit_code = 0
+
+    previous_cwd = os.getcwd()
+    workspace_path = request.get("workspacePath")
+    if workspace_path:
+        os.chdir(workspace_path)
+
+    with contextlib.redirect_stdout(stdout_buffer), contextlib.redirect_stderr(stderr_buffer):
+        try:
+            with open(request["userScriptPath"], "r", encoding="utf-8") as handle:
+                code = handle.read()
+            exec(compile(code, request["userScriptPath"], "exec"), globals_dict)
+            if request.get("saveAfter", True):
+                bpy.ops.wm.save_mainfile()
+        except Exception:
+            exit_code = 1
+            traceback.print_exc()
+        finally:
+            os.chdir(previous_cwd)
+
+    return {
+        "stdout": stdout_buffer.getvalue(),
+        "stderr": stderr_buffer.getvalue(),
+        "exitCode": exit_code,
+        "changed": exit_code == 0,
+    }
+
+
 def handle_request(request):
     request_type = request.get("type")
+    if request_type == "open-blend":
+        return handle_open_blend(request)
     if request_type == "capture-view":
         return handle_capture_view(request)
+    if request_type == "execute-python":
+        return handle_execute_python(request)
     raise RuntimeError(f"Unsupported Blender bridge request type: {request_type}")
 
 

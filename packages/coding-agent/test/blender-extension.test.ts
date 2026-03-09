@@ -30,6 +30,8 @@ describe("built-in blender extension", () => {
 		expect(extension.tools.has("blender_log_critique")).toBe(true);
 		expect(extension.handlers.has("before_agent_start")).toBe(true);
 		expect(extension.handlers.has("resources_discover")).toBe(true);
+		expect(extension.tools.get("blender_workspace_init")?.definition.description).toContain("auto-open");
+		expect(extension.tools.get("blender_execute_python")?.definition.description).toContain("live bridge-enabled");
 	});
 
 	it("allows blender_scene_info to target one or more categories", async () => {

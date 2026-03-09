@@ -94,6 +94,7 @@ Use /skill:blender-analyze with workspace=outputs/20260306_120000 and tell me wh
 ## Workspace model
 
 Every Blender task should use an explicit `workspace` path. The tools return the workspace path so follow-up turns can continue the same task without guessing.
+`blender_workspace_init` also tries to open that workspace `model.blend` in the live Blender session automatically.
 
 Typical structure:
 
@@ -111,7 +112,7 @@ outputs/TIMESTAMP/
         └── render.png
 ```
 
-The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running.
+The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running inside the live bridge-enabled Blender UI session for that workspace, so scene edits stay visible in the open Blender window without reopening the file.
 The workspace root `critique.log` stores the render critique for each create/edit iteration.
 `blender_scene_info` writes `scene-info.json` into the current iteration folder.
 `blender_scene_info` can inspect all scene categories by default, or only a subset via `categories` such as `["objects"]`, `["cameras", "cameraSettings"]`, `["cameras", "lights"]`, `["views"]`, or the full set.
@@ -119,7 +120,7 @@ The workspace root `critique.log` stores the render critique for each create/edi
 `cameraSettings` reports the camera data blocks with lens, clip, sensor, and ortho settings.
 `views` reports saved workspace views from the manifest.
 `blender_save_view` with `source="active-camera"` captures the current live Blender UI viewport into a dedicated camera object, sets it as `scene.camera`, saves the `.blend`, and stores the view name -> camera object mapping in the workspace manifest. This requires the Blender UI process launched by `vibe-blender` or another Blender session started with the bundled live bridge script.
-For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file.
+For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file. If the bridge-enabled Blender session is not already showing that workspace `model.blend`, vibe-blender will open it automatically unless Blender has unsaved changes in another scene.
 
 ## Save Current View
 
@@ -163,8 +164,10 @@ Later, render from that saved view:
 Notes:
 
 - The user does not need to manually save after adjusting the viewport; `blender_save_view` saves the `.blend` after capturing the view.
-- The open file must already be the workspace `model.blend`, not an unsaved new Blender scene.
+- For predictable current-view capture, set the view after the workspace `model.blend` is open in Blender. If Blender is still on the default startup scene, vibe-blender can auto-open the workspace file before the operation runs.
 - If multiple `VIEW_3D` areas are open, vibe-blender captures the largest one.
+- If the bridge-enabled Blender session is still on the default startup scene, vibe-blender will auto-open the requested workspace `model.blend` before execute/save-view operations. It will not auto-switch away from another file that has unsaved changes.
+- `blender_workspace_init` also performs that auto-open step, so creating or reopening a workspace usually brings the right `.blend` into the live Blender session immediately.
 
 ## Design principles
 
