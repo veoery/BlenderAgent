@@ -595,6 +595,40 @@ async function requestLiveBlenderOpenBlend(options: {
 	});
 }
 
+async function requestLiveBlenderRender(options: {
+	blendPath: string;
+	cameraName?: string;
+	outputPath: string;
+	resolution?: {
+		x: number;
+		y: number;
+		percentage?: number;
+	};
+	samples?: number;
+	mode: string;
+	signal?: AbortSignal;
+	timeoutMs?: number;
+}): Promise<{
+	outputPath: string;
+	cameraName: string | null;
+	resolution: { x: number; y: number; percentage: number };
+	mode: string;
+}> {
+	return await requestLiveBlenderBridge({
+		payload: {
+			type: "render",
+			blendPath: options.blendPath,
+			cameraName: options.cameraName,
+			outputPath: options.outputPath,
+			resolution: options.resolution,
+			samples: options.samples,
+			mode: options.mode,
+		},
+		signal: options.signal,
+		timeoutMs: options.timeoutMs,
+	});
+}
+
 function parseJsonBlock(stdout: string): unknown {
 	const startMarker = "__PI_BLENDER_JSON_START__";
 	const endMarker = "__PI_BLENDER_JSON_END__";
@@ -1076,24 +1110,37 @@ export async function blenderRender(options: RenderOptions): Promise<RenderResul
 	const outputName = normalizeRenderOutputName(options.outputName);
 	const outputPath = join(rendersDir, outputName);
 	const logPath = join(iterationDir, "render.log");
+	const mode = options.mode ?? "material-preview";
 
-	const renderPayload = await runBlenderJson<{
-		outputPath: string;
-		cameraName: string | null;
-		resolution: { x: number; y: number; percentage: number };
-	}>({
-		cwd: options.cwd,
-		blendPath: manifest.blendPath,
-		scriptSource: buildRenderScript(),
-		payload: {
-			cameraName,
-			outputPath,
-			resolution: options.resolution,
-			samples: options.samples,
-		},
-		signal: options.signal,
-		timeoutMs: 180_000,
-	});
+	const renderPayload =
+		mode === "material-preview"
+			? await requestLiveBlenderRender({
+					blendPath: manifest.blendPath,
+					cameraName,
+					outputPath,
+					resolution: options.resolution,
+					samples: options.samples,
+					mode,
+					signal: options.signal,
+					timeoutMs: 180_000,
+				})
+			: await runBlenderJson<{
+					outputPath: string;
+					cameraName: string | null;
+					resolution: { x: number; y: number; percentage: number };
+				}>({
+					cwd: options.cwd,
+					blendPath: manifest.blendPath,
+					scriptSource: buildRenderScript(),
+					payload: {
+						cameraName,
+						outputPath,
+						resolution: options.resolution,
+						samples: options.samples,
+					},
+					signal: options.signal,
+					timeoutMs: 180_000,
+				});
 
 	await writeFile(logPath, JSON.stringify(renderPayload, null, 2), "utf-8");
 
@@ -1114,7 +1161,7 @@ export async function blenderRender(options: RenderOptions): Promise<RenderResul
 		logPath,
 		view,
 		resolution: renderPayload.resolution,
-		mode: options.mode ?? "still",
+		mode,
 	};
 }
 

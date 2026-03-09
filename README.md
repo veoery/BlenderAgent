@@ -120,6 +120,7 @@ The workspace root `critique.log` stores the render critique for each create/edi
 `cameraSettings` reports the camera data blocks with lens, clip, sensor, and ortho settings.
 `views` reports saved workspace views from the manifest.
 `blender_save_view` with `source="active-camera"` captures the current live Blender UI viewport into a dedicated camera object, sets it as `scene.camera`, saves the `.blend`, and stores the view name -> camera object mapping in the workspace manifest. This requires the Blender UI process launched by `vibe-blender` or another Blender session started with the bundled live bridge script.
+`blender_render` now defaults to `mode="material-preview"`, which uses Blender's viewport material preview render through the live bridge. Use `mode="still"` when you explicitly want the older final background render path.
 For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file. If the bridge-enabled Blender session is not already showing that workspace `model.blend`, vibe-blender will open it automatically unless Blender has unsaved changes in another scene.
 
 ## Save Current View
@@ -158,6 +159,16 @@ Later, render from that saved view:
 {
   "workspace": "outputs/modern_timber_house",
   "view": "hero-front"
+}
+```
+
+Explicit final render path:
+
+```json
+{
+  "workspace": "outputs/modern_timber_house",
+  "view": "hero-front",
+  "mode": "still"
 }
 ```
 

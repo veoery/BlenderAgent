@@ -68,6 +68,26 @@ def find_viewport_context():
     return best
 
 
+def ensure_render_camera(scene, camera_name):
+    if camera_name:
+        camera_object = bpy.data.objects.get(camera_name)
+        if camera_object is None:
+            raise RuntimeError(f'Camera "{camera_name}" was not found.')
+        if camera_object.type != "CAMERA":
+            raise RuntimeError(f'Object "{camera_name}" is not a camera.')
+        scene.camera = camera_object
+
+    if scene.camera is None:
+        fallback = bpy.data.objects.get("Camera")
+        if fallback is not None and fallback.type == "CAMERA":
+            scene.camera = fallback
+
+    if scene.camera is None:
+        raise RuntimeError("No camera available for rendering.")
+
+    return scene.camera
+
+
 def ensure_camera(scene, camera_object_name, camera_settings_name):
     camera_object = bpy.data.objects.get(camera_object_name)
     if camera_object is not None and camera_object.type != "CAMERA":
@@ -236,6 +256,63 @@ def handle_execute_python(request):
     }
 
 
+def handle_render(request):
+    ensure_requested_blend_open(request)
+
+    viewport = find_viewport_context()
+    scene = viewport["scene"]
+    camera_object = ensure_render_camera(scene, request.get("cameraName"))
+    resolution = request.get("resolution") or {}
+
+    scene.render.resolution_x = int(resolution.get("x", scene.render.resolution_x))
+    scene.render.resolution_y = int(resolution.get("y", scene.render.resolution_y))
+    scene.render.resolution_percentage = int(resolution.get("percentage", scene.render.resolution_percentage))
+
+    samples = request.get("samples")
+    if samples is not None and hasattr(scene, "cycles"):
+        scene.cycles.samples = int(samples)
+
+    output_path = request["outputPath"]
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.filepath = output_path
+
+    with bpy.context.temp_override(
+        window=viewport["window"],
+        screen=viewport["screen"],
+        area=viewport["area"],
+        region=viewport["region"],
+        space_data=viewport["space"],
+        scene=scene,
+    ):
+        space = viewport["space"]
+        region_3d = viewport["region_3d"]
+        previous_shading_type = space.shading.type
+        previous_perspective = region_3d.view_perspective
+        previous_view_camera = getattr(space, "camera", None)
+        try:
+            space.camera = camera_object
+            space.shading.type = "MATERIAL"
+            region_3d.view_perspective = "CAMERA"
+            bpy.ops.render.opengl(write_still=True, view_context=True)
+        finally:
+            space.shading.type = previous_shading_type
+            region_3d.view_perspective = previous_perspective
+            if previous_view_camera is not None and previous_view_camera.type == "CAMERA":
+                space.camera = previous_view_camera
+
+    return {
+        "outputPath": output_path,
+        "cameraName": scene.camera.name if scene.camera else None,
+        "resolution": {
+            "x": int(scene.render.resolution_x),
+            "y": int(scene.render.resolution_y),
+            "percentage": int(scene.render.resolution_percentage),
+        },
+        "mode": request.get("mode", "material-preview"),
+    }
+
+
 def handle_request(request):
     request_type = request.get("type")
     if request_type == "open-blend":
@@ -244,6 +321,8 @@ def handle_request(request):
         return handle_capture_view(request)
     if request_type == "execute-python":
         return handle_execute_python(request)
+    if request_type == "render":
+        return handle_render(request)
     raise RuntimeError(f"Unsupported Blender bridge request type: {request_type}")
 
 

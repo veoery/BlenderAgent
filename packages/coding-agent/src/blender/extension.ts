@@ -239,7 +239,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_render",
 			label: "Blender Render",
 			description:
-				"Render the workspace blend file from a saved view, explicit camera, or the active camera, and write outputs into the current iteration.",
+				"Render the workspace blend file from a saved view, explicit camera, or the active camera, and write outputs into the current iteration. The default mode uses Blender's material preview viewport render.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
@@ -268,8 +268,9 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 				),
 				mode: Type.Optional(
 					Type.String({
-						description: 'Render mode label. Currently informational only; defaults to "still".',
-						default: "still",
+						description:
+							'Render mode. Defaults to "material-preview" for viewport-style material preview renders. Use "still" for the final background render path.',
+						default: "material-preview",
 					}),
 				),
 			}),
