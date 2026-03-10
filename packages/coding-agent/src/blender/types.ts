@@ -160,6 +160,7 @@ export interface SessionContextOptions {
 	cwd: string;
 	workspace?: string;
 	include?: BlenderSessionContextCategory[];
+	timeoutMs?: number;
 	signal?: AbortSignal;
 }
 

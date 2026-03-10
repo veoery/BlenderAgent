@@ -40,6 +40,8 @@ The bundled Blender extension also provides these skills:
 
 These skills add workflow guidance. The actual scene work still happens through Blender tools.
 
+`vibe-blender` also appends a compact live Blender session summary to the turn prompt when the bridge-enabled Blender UI responds quickly enough. This keeps active-object, selection, mode, and viewport context visible to the model without replacing the explicit `blender_session_context` tool.
+
 ## Requirements
 
 - Blender installed locally
@@ -154,6 +156,17 @@ Example:
 ```
 
 Use this tool to resolve ambiguous references before editing code. It does not replace explicit `workspace` arguments for other Blender tools.
+
+When the live Blender bridge is available, `vibe-blender` also injects a compact prompt summary from the same session context, such as:
+
+- open `.blend`
+- inferred workspace
+- current scene and active camera
+- current mode and active object
+- selected objects
+- viewport perspective and shading
+
+The explicit tool remains the source for full structured inspection and debugging.
 
 ## Save Current View
 

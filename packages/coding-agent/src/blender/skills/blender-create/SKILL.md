@@ -10,7 +10,7 @@ Use this skill when the user wants a brand-new Blender scene or object.
 Workflow:
 1. Call `blender_workspace_init` first with an explicit `workspace` when the user provides one, otherwise create a new workspace.
 2. Inspect requirements before writing code. If references are attached, combine this with `blender-with-reference` and incorporate them into planning.
-3. If the user refers to "it", "this", the selected object, or the current view in the live Blender session, inspect `blender_session_context` first so you resolve that target explicitly.
+3. If the user refers to "it", "this", the selected object, or the current view in the live Blender session, first use the injected live Blender context summary when it is present and clearly usable. Only call `blender_session_context` again when that summary is missing, stale, or too incomplete to resolve the target explicitly.
 4. For each new user instruction, follow a ReAct-style loop with at most 5 iterations:
 5. Author the canonical workspace script at `$workspace/script.py`. Use `write` for the first version and `edit` for later iterations.
 6. Always edit based on the current global script instead of rewriting from scratch unless the prior script is clearly unsalvageable.
@@ -34,6 +34,7 @@ Workflow:
 Rules:
 - Keep all Blender mutations inside the managed workspace.
 - Prefer targeted iterations over full rewrites after the first pass.
+- If a valid injected live context summary already resolves the target clearly, do not call `blender_session_context` again unless you need more detail or need to verify a possible mismatch.
 - When the request depends on the live Blender selection or active object, state what target you resolved before changing it.
 - Base every new iteration on the critique from the previous render instead of changing unrelated parts.
 - Treat render perspective as part of the task. If the current view hides important shape, proportion, or material problems, create or change saved views before judging the result.

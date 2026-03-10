@@ -9,6 +9,7 @@ import {
 	blenderSceneInfo,
 	blenderSessionContext,
 	blenderWorkspaceInit,
+	formatCompactSessionContextPrompt,
 	getBundledBlenderSkillsDir,
 } from "./runtime.js";
 
@@ -22,6 +23,8 @@ const BLENDER_WORKFLOW_GUIDANCE = [
 	"For create and edit work, use a short ReAct loop: execute, render, critique, log the critique, then either stop when the result is good enough or iterate. Do at most 5 iterations for each new user instruction.",
 	"Do not restate tool schemas in prose. Use the tool definitions directly.",
 ].join(" ");
+
+const LIVE_CONTEXT_PROMPT_TIMEOUT_MS = 1_500;
 
 function formatJsonResult(value: unknown): string {
 	return JSON.stringify(value, null, 2);
@@ -417,9 +420,25 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			skillPaths: [getBundledBlenderSkillsDir()],
 		}));
 
-		pi.on("before_agent_start", (event) => ({
-			systemPrompt: `${event.systemPrompt}\n\n${BLENDER_WORKFLOW_GUIDANCE}`,
-		}));
+		pi.on("before_agent_start", async (event, ctx) => {
+			let liveContextPrompt = "";
+			try {
+				const liveContext = await blenderSessionContext({
+					cwd: ctx.cwd,
+					include: ["file", "scene", "selection", "mode", "viewport"],
+					timeoutMs: LIVE_CONTEXT_PROMPT_TIMEOUT_MS,
+				});
+				liveContextPrompt = formatCompactSessionContextPrompt(liveContext) ?? "";
+			} catch {
+				liveContextPrompt = "";
+			}
+
+			return {
+				systemPrompt: [event.systemPrompt, BLENDER_WORKFLOW_GUIDANCE, liveContextPrompt]
+					.filter((part) => part.length > 0)
+					.join("\n\n"),
+			};
+		});
 	};
 
 	return [factory];

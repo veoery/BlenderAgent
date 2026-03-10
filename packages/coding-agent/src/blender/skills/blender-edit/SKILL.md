@@ -10,7 +10,7 @@ Use this skill when the user wants to change an existing Blender scene.
 Workflow:
 1. Initialize or reopen the workspace with `blender_workspace_init`.
 2. Call `blender_scene_info` before making changes unless the request is trivial and local.
-3. If the user refers to "it", "this", the selected object, the active object, or the current view, inspect `blender_session_context` first so you resolve the live Blender target before editing code.
+3. If the user refers to "it", "this", the selected object, the active object, or the current view, first use the injected live Blender context summary when it is present and clearly usable. Only call `blender_session_context` again when that summary is missing, stale, or too incomplete to resolve the live Blender target safely.
 4. For each new user instruction, follow a ReAct-style loop with at most 5 iterations:
 5. Edit the canonical workspace script at `$workspace/script.py` with the normal `edit` tool.
 6. Always edit based on the current global script instead of drafting a disconnected replacement unless the current script is unusable.
@@ -33,6 +33,7 @@ Workflow:
 Rules:
 - Keep `workspace` explicit in every Blender tool call.
 - Prefer small, reversible edits over rebuilding the whole scene.
+- If a valid injected live context summary already resolves the target clearly, do not call `blender_session_context` again unless you need more detail or need to verify a possible mismatch.
 - When the request is ambiguous, state which active or selected object you resolved before mutating it.
 - Base each new iteration on the critique from the prior render.
 - Treat camera/view management as part of the edit loop. If the current render angle is weak, save or update a better view before judging whether the Python edit worked.

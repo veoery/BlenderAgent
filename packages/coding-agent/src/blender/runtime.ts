@@ -3,7 +3,7 @@ export { blenderExecutePython } from "./execute.js";
 export { blenderRender } from "./render.js";
 export { blenderSaveView } from "./save-view.js";
 export { blenderSceneInfo } from "./scene-info.js";
-export { blenderSessionContext } from "./session-context.js";
+export { blenderSessionContext, formatCompactSessionContextPrompt } from "./session-context.js";
 export type {
 	BlenderRenderOutput,
 	BlenderSavedView,

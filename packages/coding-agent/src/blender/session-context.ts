@@ -14,7 +14,7 @@ function shouldInclude(
 export async function blenderSessionContext(options: SessionContextOptions): Promise<SessionContextResult> {
 	const bridgeResult = await requestLiveBlenderSessionContext({
 		signal: options.signal,
-		timeoutMs: LIVE_BRIDGE_TIMEOUT_MS,
+		timeoutMs: options.timeoutMs ?? LIVE_BRIDGE_TIMEOUT_MS,
 	});
 
 	const warnings: string[] = [];
@@ -78,4 +78,84 @@ export async function blenderSessionContext(options: SessionContextOptions): Pro
 		mode: shouldInclude(options.include, "mode") ? bridgeResult.mode : null,
 		viewport: shouldInclude(options.include, "viewport") ? bridgeResult.viewport : null,
 	};
+}
+
+function formatSelectedObjects(result: SessionContextResult): string | null {
+	const selection = result.selection;
+	if (!selection || selection.selectedObjectCount === 0) {
+		return null;
+	}
+
+	const names = selection.selectedObjects.slice(0, 3).map((obj) => `\`${obj.name}\``);
+	const suffix = selection.selectedObjectCount > 3 ? `, +${selection.selectedObjectCount - 3} more` : "";
+	return `${names.join(", ")}${suffix}`;
+}
+
+export function formatCompactSessionContextPrompt(result: SessionContextResult): string | null {
+	const lines: string[] = [];
+	const blendPath = result.file?.blendPath;
+
+	if (blendPath) {
+		lines.push(`- Blend: \`${blendPath}\`${result.file?.isDirty ? " (unsaved changes)" : ""}`);
+	} else if (result.file && !result.file.isSaved) {
+		lines.push(`- Blend: unsaved scene${result.file.isDirty ? " (dirty)" : ""}`);
+	}
+
+	if (result.workspacePath) {
+		lines.push(`- Workspace: \`${result.workspacePath}\``);
+	}
+
+	if (result.scene?.name || result.scene?.activeCameraName) {
+		const sceneSummary = [result.scene?.name ? `\`${result.scene.name}\`` : "unknown scene"];
+		if (result.scene?.activeCameraName) {
+			sceneSummary.push(`camera \`${result.scene.activeCameraName}\``);
+		}
+		lines.push(`- Scene: ${sceneSummary.join(", ")}`);
+	}
+
+	if (result.mode?.mode || result.selection?.activeObject) {
+		const targetSummary: string[] = [];
+		if (result.mode?.mode) {
+			targetSummary.push(`mode \`${result.mode.mode}\``);
+		}
+		if (result.selection?.activeObject) {
+			targetSummary.push(`active object \`${result.selection.activeObject.name}\``);
+		}
+		lines.push(`- Target: ${targetSummary.join(", ")}`);
+	}
+
+	const selected = formatSelectedObjects(result);
+	if (selected) {
+		lines.push(`- Selected: ${selected}`);
+	}
+
+	if (result.viewport?.hasViewport) {
+		const viewportSummary: string[] = [];
+		if (result.viewport.viewPerspective) {
+			viewportSummary.push(`\`${result.viewport.viewPerspective}\``);
+		}
+		if (result.viewport.shadingType) {
+			viewportSummary.push(`\`${result.viewport.shadingType}\``);
+		}
+		if (result.viewport.cameraName) {
+			viewportSummary.push(`view camera \`${result.viewport.cameraName}\``);
+		}
+		lines.push(`- Viewport: ${viewportSummary.join(", ")}`);
+	}
+
+	const compactWarnings = result.warnings.filter(
+		(warning) =>
+			warning.includes("unsaved") ||
+			warning.includes('ambiguous references like "it"') ||
+			warning.includes("not the requested workspace"),
+	);
+	if (compactWarnings.length > 0) {
+		lines.push(`- Warning: ${compactWarnings[0]}`);
+	}
+
+	if (lines.length === 0) {
+		return null;
+	}
+
+	return ["Live Blender context:", ...lines].join("\n");
 }
