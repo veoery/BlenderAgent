@@ -157,5 +157,18 @@ export function formatCompactSessionContextPrompt(result: SessionContextResult):
 		return null;
 	}
 
-	return ["Live Blender context:", ...lines].join("\n");
+	return [
+		"Authoritative live Blender state for this turn only.",
+		"Use this as the current source of truth for present-tense Blender UI questions such as:",
+		'- "what is selected for now"',
+		'- "update it"',
+		'- "render from what I\'m looking at"',
+		'- "change the selected object"',
+		'- "make the active object metallic"',
+		'- "fix this from the current angle"',
+		"This block supersedes earlier live Blender context summaries, prior selections mentioned in message history, and prior assistant inferences about the current Blender UI state.",
+		"If Blender changes during this turn and you need a fresher snapshot, call `blender_session_context` again.",
+		"Current live Blender state:",
+		...lines,
+	].join("\n");
 }

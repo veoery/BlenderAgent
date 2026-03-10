@@ -34,6 +34,7 @@ Rules:
 - Keep `workspace` explicit in every Blender tool call.
 - Prefer small, reversible edits over rebuilding the whole scene.
 - If a valid injected live context summary already resolves the target clearly, do not call `blender_session_context` again unless you need more detail or need to verify a possible mismatch.
+- Older injected live Blender context summaries in message history are stale by default. If an authoritative current-turn live Blender state block is present, use that block as the only current UI truth and ignore earlier live-context mentions unless you explicitly refresh with `blender_session_context` after Blender changes during the turn.
 - When the request is ambiguous, state which active or selected object you resolved before mutating it.
 - Base each new iteration on the critique from the prior render.
 - Treat camera/view management as part of the edit loop. If the current render angle is weak, save or update a better view before judging whether the Python edit worked.

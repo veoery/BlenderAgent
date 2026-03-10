@@ -20,6 +20,7 @@ Rules:
 - Treat references as constraints for planning and evaluation.
 - Do not claim exact visual matches without rendering and checking.
 - If a valid injected live context summary already resolves the target and viewpoint clearly, do not call `blender_session_context` again unless you need more detail or need to verify a possible mismatch.
+- Older injected live Blender context summaries in message history are stale by default. If an authoritative current-turn live Blender state block is present, use that block as the only current UI truth and ignore earlier live-context mentions unless you explicitly refresh with `blender_session_context` after Blender changes during the turn.
 - Keep the same explicit `workspace` throughout the full iteration loop.
 - Do not change user-created views or cameras just to match a reference. Create a new agent-owned saved view/camera when you need a better comparison angle.
 - If the user does not specify a render view, you may manage agent-owned evaluation views and refine them across iterations so the render perspective better matches the reference or exposes important mismatches.

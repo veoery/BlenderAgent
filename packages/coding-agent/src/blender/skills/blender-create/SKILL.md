@@ -35,6 +35,7 @@ Rules:
 - Keep all Blender mutations inside the managed workspace.
 - Prefer targeted iterations over full rewrites after the first pass.
 - If a valid injected live context summary already resolves the target clearly, do not call `blender_session_context` again unless you need more detail or need to verify a possible mismatch.
+- Older injected live Blender context summaries in message history are stale by default. If an authoritative current-turn live Blender state block is present, use that block as the only current UI truth and ignore earlier live-context mentions unless you explicitly refresh with `blender_session_context` after Blender changes during the turn.
 - When the request depends on the live Blender selection or active object, state what target you resolved before changing it.
 - Base every new iteration on the critique from the previous render instead of changing unrelated parts.
 - Treat render perspective as part of the task. If the current view hides important shape, proportion, or material problems, create or change saved views before judging the result.
