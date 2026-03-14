@@ -90,7 +90,7 @@ export async function blenderRender(options: RenderOptions): Promise<RenderResul
 					samples: options.samples,
 					mode,
 					signal: options.signal,
-					timeoutMs: 180_000,
+					timeoutMs: 360_000,
 				})
 			: await runBlenderJson<{
 					outputPath: string;
@@ -107,7 +107,7 @@ export async function blenderRender(options: RenderOptions): Promise<RenderResul
 						samples: options.samples,
 					},
 					signal: options.signal,
-					timeoutMs: 180_000,
+					timeoutMs: 360_000,
 				});
 
 	await writeFile(logPath, JSON.stringify(renderPayload, null, 2), "utf-8");
