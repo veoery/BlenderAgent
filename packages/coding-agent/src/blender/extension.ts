@@ -18,6 +18,7 @@ const BLENDER_WORKFLOW_GUIDANCE = [
 	"Prefer Blender tools over generic shell/file workflows for scene creation, editing, inspection, and rendering.",
 	"Keep the `workspace` argument explicit in every Blender tool call and reuse the same workspace across continuation turns.",
 	"Author Blender code in the workspace root script.py using the normal write/edit tools, then call blender_execute_python with script_path pointing to that global script.",
+	'When editing Blender materials with Principled BSDF, prefer named socket access like `bsdf.inputs["Base Color"]`, `bsdf.inputs["Roughness"]`, and `bsdf.inputs["Metallic"]` instead of hard-coded socket indices, because socket ordering can change across Blender versions and break Material Preview or Rendered mode.',
 	"If an authoritative live Blender state block is present for this turn, treat it as the only current source of truth for present-tense Blender UI state such as current selection, active object, or viewport.",
 	"Ignore older live Blender context summaries, earlier selection mentions in message history, and prior assistant inferences about current Blender UI state when answering present-tense questions for this turn.",
 	'If the user refers to "it", "this", the selected object, or the current view and the authoritative live Blender state block is missing, stale, or insufficient, call blender_session_context to refresh live Blender selection and viewport state before mutating.',
