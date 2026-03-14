@@ -61,6 +61,8 @@ describe("built-in blender extension", () => {
 		expect(properties.categories).toBeDefined();
 		expect(JSON.stringify(properties.categories)).toContain("views");
 		expect(JSON.stringify(properties.categories)).toContain("cameraSettings");
+		expect(properties.includeObjects).toBeUndefined();
+		expect(properties.includeCameras).toBeUndefined();
 	});
 
 	it("allows blender_save_view to capture the live UI view into a dedicated camera", async () => {

@@ -20,16 +20,15 @@ function resolveSceneInfoSelection(options: SceneInfoOptions): SceneInfoSelectio
 		};
 	}
 
-	const includeCameras = options.includeCameras ?? true;
 	return {
-		includeObjects: options.includeObjects ?? true,
-		includeCollections: options.includeCollections ?? true,
-		includeMaterials: options.includeMaterials ?? true,
-		includeCameras,
-		includeCameraSettings: options.includeCameraSettings ?? includeCameras,
-		includeLights: options.includeLights ?? true,
+		includeObjects: true,
+		includeCollections: true,
+		includeMaterials: true,
+		includeCameras: true,
+		includeCameraSettings: true,
+		includeLights: true,
 		includeViews: true,
-		includeRenderSettings: options.includeRenderSettings ?? true,
+		includeRenderSettings: true,
 	};
 }
 

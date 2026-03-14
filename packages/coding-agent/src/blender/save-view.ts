@@ -21,13 +21,7 @@ export async function blenderSaveView(options: SaveViewOptions): Promise<SaveVie
 		cameraSettingsName = captureResult.cameraSettingsName;
 	} else {
 		const sceneInfo = await getSceneInfoFromManifest(options.cwd, manifest, {
-			includeObjects: false,
-			includeCollections: false,
-			includeMaterials: false,
-			includeCameras: true,
-			includeCameraSettings: false,
-			includeLights: false,
-			includeRenderSettings: false,
+			categories: ["cameras"],
 			signal: options.signal,
 		});
 		for (const camera of sceneInfo.cameras) {

@@ -193,7 +193,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_scene_info",
 			label: "Blender Scene Info",
 			description:
-				"Inspect the current Blender workspace, write structured scene metadata into the current iteration folder, and return it for planning or verification.",
+				'Inspect the current Blender workspace, write structured scene metadata into the current iteration folder, and return it for planning or verification. Prefer a narrow `categories` list such as `["objects"]`, `["materials"]`, or `["cameras", "cameraSettings"]` when you only need one or a few sections. Omit `categories` only when you truly need the full scene info payload.',
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
@@ -212,31 +212,17 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 						]),
 						{
 							description:
-								"Optional scene info categories to inspect. Omit to inspect all categories. Provide one item for one category or multiple items for a subset.",
+								"Optional scene info categories to inspect. Pass one category to inspect only that section, or pass a short list for a subset. Omit `categories` only when you need all available scene info sections.",
 							uniqueItems: true,
 						},
 					),
 				),
-				includeObjects: Type.Optional(Type.Boolean({ default: true })),
-				includeCollections: Type.Optional(Type.Boolean({ default: true })),
-				includeMaterials: Type.Optional(Type.Boolean({ default: true })),
-				includeCameras: Type.Optional(Type.Boolean({ default: true })),
-				includeCameraSettings: Type.Optional(Type.Boolean({ default: true })),
-				includeLights: Type.Optional(Type.Boolean({ default: true })),
-				includeRenderSettings: Type.Optional(Type.Boolean({ default: true })),
 			}),
 			execute: async (_toolCallId, params, signal, _onUpdate, ctx) => {
 				const result = await blenderSceneInfo({
 					cwd: ctx.cwd,
 					workspace: params.workspace,
 					categories: params.categories,
-					includeObjects: params.includeObjects,
-					includeCollections: params.includeCollections,
-					includeMaterials: params.includeMaterials,
-					includeCameras: params.includeCameras,
-					includeCameraSettings: params.includeCameraSettings,
-					includeLights: params.includeLights,
-					includeRenderSettings: params.includeRenderSettings,
 					signal,
 				});
 

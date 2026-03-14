@@ -119,13 +119,6 @@ export interface SceneInfoOptions {
 	categories?: Array<
 		"objects" | "collections" | "materials" | "cameras" | "cameraSettings" | "lights" | "views" | "renderSettings"
 	>;
-	includeObjects?: boolean;
-	includeCollections?: boolean;
-	includeMaterials?: boolean;
-	includeCameras?: boolean;
-	includeCameraSettings?: boolean;
-	includeLights?: boolean;
-	includeRenderSettings?: boolean;
 	signal?: AbortSignal;
 }
 
