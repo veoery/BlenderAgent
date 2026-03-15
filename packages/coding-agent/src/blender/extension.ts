@@ -19,6 +19,7 @@ const BLENDER_WORKFLOW_GUIDANCE = [
 	"Keep the `workspace` argument explicit in every Blender tool call and reuse the same workspace across continuation turns.",
 	"Author Blender code in the workspace root script.py using the normal write/edit tools, then call blender_execute_python with script_path pointing to that global script.",
 	'When editing Blender materials with Principled BSDF, prefer named socket access like `bsdf.inputs["Base Color"]`, `bsdf.inputs["Roughness"]`, and `bsdf.inputs["Metallic"]` instead of hard-coded socket indices, because socket ordering can change across Blender versions and break Material Preview or Rendered mode.',
+	"For `blender_render`, default to live camera-based rendering unless the user explicitly asks to use the current viewport. This avoids unexpected render view changes when the user is only navigating the Blender UI for inspection.",
 	"If an authoritative live Blender state block is present for this turn, treat it as the only current source of truth for present-tense Blender UI state such as current selection, active object, or viewport.",
 	"Ignore older live Blender context summaries, earlier selection mentions in message history, and prior assistant inferences about current Blender UI state when answering present-tense questions for this turn.",
 	'If the user refers to "it", "this", the selected object, or the current view and the authoritative live Blender state block is missing, stale, or insufficient, call blender_session_context to refresh live Blender selection and viewport state before mutating.',
@@ -277,7 +278,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			name: "blender_render",
 			label: "Blender Render",
 			description:
-				"Render the workspace blend file from a saved view, explicit camera, or the active camera, and write outputs into the current iteration. The default mode uses Blender's material preview viewport render.",
+				"Render the workspace blend file and write outputs into the current iteration. Use renderMethod=`live` for viewport renders and renderMethod=`background` for normal headless scene renders. Live renders default to camera-based framing with viewportShading=`material-preview`; switch to viewSource=`current-view` only when the user explicitly wants the raw current viewport. Live viewport renders disable overlays automatically so grids, axes, and other viewport clutter are not captured. Background renders are camera-based and use renderEngine overrides such as `eevee`, `cycles`, or `workbench` instead of viewport shading modes.",
 			parameters: Type.Object({
 				workspace: Type.String({
 					description: "Explicit workspace path for the Blender task.",
@@ -304,11 +305,39 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 						description: "Output image file name. Defaults to render.png.",
 					}),
 				),
-				mode: Type.Optional(
-					Type.String({
+				renderMethod: Type.Optional(
+					Type.Union([Type.Literal("live"), Type.Literal("background")], {
 						description:
-							'Render mode. Defaults to "material-preview" for viewport-style material preview renders. Use "still" for the final background render path.',
-						default: "material-preview",
+							"How to execute the render. `live` uses the open Blender UI viewport. `background` uses a headless scene render. Defaults to `live`.",
+						default: "live",
+					}),
+				),
+				viewSource: Type.Optional(
+					Type.Union([Type.Literal("camera"), Type.Literal("current-view")], {
+						description:
+							"How to choose the framing. `camera` uses the saved view, explicit camera, or active camera. `current-view` uses the raw current viewport in the live Blender UI. Defaults to `camera`.",
+						default: "camera",
+					}),
+				),
+				viewportShading: Type.Optional(
+					Type.Union(
+						[
+							Type.Literal("wireframe"),
+							Type.Literal("solid"),
+							Type.Literal("material-preview"),
+							Type.Literal("rendered"),
+						],
+						{
+							description:
+								"Viewport shading mode for live renders only. Defaults to `material-preview`. `solid` uses Workbench-style viewport shading. `rendered` uses the scene render engine interactively.",
+							default: "material-preview",
+						},
+					),
+				),
+				renderEngine: Type.Optional(
+					Type.Union([Type.Literal("eevee"), Type.Literal("cycles"), Type.Literal("workbench")], {
+						description:
+							"Optional render engine override for background renders only. Omit to keep the scene's current engine.",
 					}),
 				),
 			}),
@@ -320,7 +349,10 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 					resolution: params.resolution,
 					samples: params.samples,
 					outputName: params.outputName,
-					mode: params.mode,
+					renderMethod: params.renderMethod,
+					viewSource: params.viewSource,
+					viewportShading: params.viewportShading,
+					renderEngine: params.renderEngine,
 					signal,
 				});
 

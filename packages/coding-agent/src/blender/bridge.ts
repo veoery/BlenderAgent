@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getBlenderBridgeDir } from "../config.js";
+import type { BlenderRenderViewSource, BlenderViewportShading } from "./types.js";
 import { delay, fileExists, LIVE_BRIDGE_POLL_MS, LIVE_BRIDGE_TIMEOUT_MS } from "./utils.js";
 
 function getLiveBridgePaths(): {
@@ -133,20 +134,20 @@ export async function requestLiveBlenderRender(options: {
 	blendPath: string;
 	cameraName?: string;
 	outputPath: string;
+	viewSource: BlenderRenderViewSource;
+	viewportShading: BlenderViewportShading;
 	resolution?: {
 		x: number;
 		y: number;
 		percentage?: number;
 	};
 	samples?: number;
-	mode: string;
 	signal?: AbortSignal;
 	timeoutMs?: number;
 }): Promise<{
 	outputPath: string;
 	cameraName: string | null;
 	resolution: { x: number; y: number; percentage: number };
-	mode: string;
 }> {
 	return await requestLiveBlenderBridge({
 		payload: {
@@ -154,9 +155,10 @@ export async function requestLiveBlenderRender(options: {
 			blendPath: options.blendPath,
 			cameraName: options.cameraName,
 			outputPath: options.outputPath,
+			viewSource: options.viewSource,
+			viewportShading: options.viewportShading,
 			resolution: options.resolution,
 			samples: options.samples,
-			mode: options.mode,
 		},
 		signal: options.signal,
 		timeoutMs: options.timeoutMs,

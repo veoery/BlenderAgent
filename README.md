@@ -124,7 +124,7 @@ The workspace root `critique.log` stores the render critique for each create/edi
 `cameraSettings` reports the camera data blocks with lens, clip, sensor, and ortho settings.
 `views` reports saved workspace views from the manifest.
 `blender_save_view` with `source="active-camera"` captures the current live Blender UI viewport into a dedicated camera object, sets it as `scene.camera`, saves the `.blend`, and stores the view name -> camera object mapping in the workspace manifest. This requires the Blender UI process launched by `vibe-blender` or another Blender session started with the bundled live bridge script.
-`blender_render` now defaults to `mode="material-preview"`, which uses Blender's viewport material preview render through the live bridge. Use `mode="still"` when you explicitly want the older final background render path.
+`blender_render` now uses a more general render API. It defaults to `renderMethod="live"`, `viewSource="camera"`, and `viewportShading="material-preview"`, which keeps renders stable by using the selected camera or saved view instead of whatever transient viewport angle the user happens to be orbiting. Use `viewSource="current-view"` only when the user explicitly wants the raw current viewport. Live viewport renders disable overlays automatically so grids, axes, and other viewport clutter are not captured. Use `renderMethod="background"` when you want a normal headless scene render, optionally with `renderEngine="eevee"`, `renderEngine="cycles"`, or `renderEngine="workbench"`.
 When authoring Blender Python materials, prefer name-based Principled BSDF socket access such as `bsdf.inputs["Base Color"]`, `bsdf.inputs["Roughness"]`, and `bsdf.inputs["Metallic"]` instead of hard-coded socket indices. Principled socket ordering can change across Blender versions, and index-based assignments can produce materials that disappear or render incorrectly in Material Preview and Rendered mode even though the geometry is still visible in Solid mode.
 For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file. If the bridge-enabled Blender session is not already showing that workspace `model.blend`, vibe-blender will open it automatically unless Blender has unsaved changes in another scene.
 
@@ -214,7 +214,18 @@ Explicit final render path:
 {
   "workspace": "outputs/modern_timber_house",
   "view": "hero-front",
-  "mode": "still"
+  "renderMethod": "background"
+}
+```
+
+Explicit current viewport render:
+
+```json
+{
+  "workspace": "outputs/modern_timber_house",
+  "renderMethod": "live",
+  "viewSource": "current-view",
+  "viewportShading": "material-preview"
 }
 ```
 

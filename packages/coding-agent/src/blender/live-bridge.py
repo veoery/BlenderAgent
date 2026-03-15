@@ -125,6 +125,18 @@ def ensure_render_camera(scene, camera_name):
     return scene.camera
 
 
+def viewport_shading_type(shading_name):
+    if shading_name == "wireframe":
+        return "WIREFRAME"
+    if shading_name == "solid":
+        return "SOLID"
+    if shading_name == "material-preview":
+        return "MATERIAL"
+    if shading_name == "rendered":
+        return "RENDERED"
+    raise RuntimeError(f'Unsupported viewport shading "{shading_name}".')
+
+
 def ensure_camera(scene, camera_object_name, camera_settings_name):
     camera_object = bpy.data.objects.get(camera_object_name)
     if camera_object is not None and camera_object.type != "CAMERA":
@@ -298,7 +310,9 @@ def handle_render(request):
 
     viewport = find_viewport_context()
     scene = viewport["scene"]
-    camera_object = ensure_render_camera(scene, request.get("cameraName"))
+    view_source = request.get("viewSource", "camera")
+    viewport_shading = viewport_shading_type(request.get("viewportShading", "material-preview"))
+    camera_object = ensure_render_camera(scene, request.get("cameraName")) if view_source == "camera" else None
     resolution = request.get("resolution") or {}
 
     scene.render.resolution_x = int(resolution.get("x", scene.render.resolution_x))
@@ -325,14 +339,18 @@ def handle_render(request):
         space = viewport["space"]
         region_3d = viewport["region_3d"]
         previous_shading_type = space.shading.type
+        previous_show_overlays = space.overlay.show_overlays
         previous_perspective = region_3d.view_perspective
         previous_view_camera = getattr(space, "camera", None)
         try:
-            space.camera = camera_object
-            space.shading.type = "MATERIAL"
-            region_3d.view_perspective = "CAMERA"
+            space.overlay.show_overlays = False
+            space.shading.type = viewport_shading
+            if view_source == "camera":
+                space.camera = camera_object
+                region_3d.view_perspective = "CAMERA"
             bpy.ops.render.opengl(write_still=True, view_context=True)
         finally:
+            space.overlay.show_overlays = previous_show_overlays
             space.shading.type = previous_shading_type
             region_3d.view_perspective = previous_perspective
             if previous_view_camera is not None and previous_view_camera.type == "CAMERA":
@@ -346,7 +364,6 @@ def handle_render(request):
             "y": int(scene.render.resolution_y),
             "percentage": int(scene.render.resolution_percentage),
         },
-        "mode": request.get("mode", "material-preview"),
     }
 
 

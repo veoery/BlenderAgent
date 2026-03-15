@@ -34,7 +34,7 @@ describe("built-in blender extension", () => {
 		expect(extension.tools.get("blender_workspace_init")?.definition.description).toContain("auto-open");
 		expect(extension.tools.get("blender_execute_python")?.definition.description).toContain("live bridge-enabled");
 		expect(extension.tools.get("blender_session_context")?.definition.description).toContain("selected objects");
-		expect(extension.tools.get("blender_render")?.definition.description).toContain("material preview");
+		expect(extension.tools.get("blender_render")?.definition.description).toContain("renderMethod=`live`");
 		expect(extension.tools.get("blender_log_critique")?.definition.description).toContain("view adequacy");
 	});
 
@@ -74,6 +74,22 @@ describe("built-in blender extension", () => {
 		const properties = saveViewTool?.definition.parameters.properties as Record<string, unknown>;
 		expect(properties.camera_name).toBeDefined();
 		expect(JSON.stringify(properties.source)).toContain("current Blender UI view");
+	});
+
+	it("exposes the reorganized blender_render API", async () => {
+		const [factory] = getBuiltInBlenderExtensionFactories("vibe-blender");
+		const runtime = createExtensionRuntime();
+		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
+		const renderTool = extension.tools.get("blender_render");
+		expect(renderTool).toBeDefined();
+		const properties = renderTool?.definition.parameters.properties as Record<string, unknown>;
+		expect(properties.renderMethod).toBeDefined();
+		expect(properties.viewSource).toBeDefined();
+		expect(properties.viewportShading).toBeDefined();
+		expect(properties.renderEngine).toBeDefined();
+		expect(JSON.stringify(properties.viewportShading)).toContain("material-preview");
+		expect(JSON.stringify(properties.renderEngine)).toContain("workbench");
+		expect(properties.mode).toBeUndefined();
 	});
 
 	it("requires blender_log_critique to record view adequacy", async () => {

@@ -185,6 +185,11 @@ export interface SaveViewResult {
 	savedView: BlenderSavedView;
 }
 
+export type BlenderRenderMethod = "live" | "background";
+export type BlenderRenderViewSource = "camera" | "current-view";
+export type BlenderViewportShading = "wireframe" | "solid" | "material-preview" | "rendered";
+export type BlenderRenderEngine = "eevee" | "cycles" | "workbench";
+
 export interface RenderOptions {
 	cwd: string;
 	workspace: string;
@@ -196,7 +201,10 @@ export interface RenderOptions {
 	};
 	samples?: number;
 	outputName?: string;
-	mode?: string;
+	renderMethod?: BlenderRenderMethod;
+	viewSource?: BlenderRenderViewSource;
+	viewportShading?: BlenderViewportShading;
+	renderEngine?: BlenderRenderEngine;
 	signal?: AbortSignal;
 }
 
@@ -208,7 +216,10 @@ export interface RenderResult {
 	logPath: string;
 	view: string;
 	resolution: { x: number; y: number; percentage: number };
-	mode: string;
+	renderMethod: BlenderRenderMethod;
+	viewSource: BlenderRenderViewSource;
+	viewportShading: BlenderViewportShading | null;
+	renderEngine: BlenderRenderEngine | null;
 }
 
 export interface CritiqueLogOptions {
