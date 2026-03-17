@@ -214,8 +214,11 @@ export interface RenderResult {
 	iteration: number;
 	outputPath: string;
 	logPath: string;
+	outputName: string;
 	view: string;
+	cameraName: string | null;
 	resolution: { x: number; y: number; percentage: number };
+	samples: number | null;
 	renderMethod: BlenderRenderMethod;
 	viewSource: BlenderRenderViewSource;
 	viewportShading: BlenderViewportShading | null;

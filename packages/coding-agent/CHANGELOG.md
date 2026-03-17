@@ -25,6 +25,7 @@
 - Changed `blender_workspace_init` to auto-open the workspace `model.blend` in the live Blender session when possible, instead of only creating the workspace on disk.
 - Changed `blender_render` to default to a live Blender material preview viewport render (`mode="material-preview"`), while keeping the previous final background render path available via `mode="still"`.
 - Changed `blender_render` to expose a more general API with `renderMethod`, `viewSource`, `viewportShading`, and `renderEngine`. Live renders now default to camera-based framing unless the caller explicitly asks for `viewSource="current-view"`, and live viewport renders temporarily disable overlays so grid and axis clutter is not captured.
+- Changed `blender_render` results to echo the normalized render parameters more completely, including `outputName`, `samples`, and the resolved `cameraName`.
 - Refactored the Blender runtime into focused modules for workspace, bridge, execute, render, save-view, scene-info, critique, shared types, and shared utilities, leaving `runtime.ts` as a thin public re-export layer.
 - Changed `blender_log_critique` to require a non-scored `viewAdequacy` judgment so critique logs explicitly capture whether the current render perspective is good enough for evaluation.
 - Changed `vibe-blender` to append a compact live Blender session summary to the per-turn prompt when the bridge responds quickly, so active object, selection, mode, and viewport context are available without an explicit tool call every time.
