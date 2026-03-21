@@ -1,6 +1,7 @@
 node_modules/
 outputs/
 dist/
+target/
 *.log
 .DS_Store
 *.tsbuildinfo
@@ -34,6 +35,8 @@ pi-*.html
 out.html
 packages/coding-agent/binaries/
 todo.md
+src-tauri/gen/
+apps/desktop/src-tauri/gen/
 
 # Tmp
 coffee_table_workspace/
