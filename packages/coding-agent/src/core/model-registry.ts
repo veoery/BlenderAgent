@@ -14,18 +14,25 @@ import {
 	type OpenAICompletionsCompat,
 	type OpenAIResponsesCompat,
 	registerApiProvider,
-	registerOAuthProvider,
+	resetApiProviders,
 	type SimpleStreamOptions,
 } from "@mariozechner/pi-ai";
+import { registerOAuthProvider, resetOAuthProviders } from "@mariozechner/pi-ai/oauth";
 import { type Static, Type } from "@sinclair/typebox";
 import AjvModule from "ajv";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { getAgentDir } from "../config.js";
 import type { AuthStorage } from "./auth-storage.js";
-import { clearConfigValueCache, resolveConfigValue, resolveHeaders } from "./resolve-config-value.js";
+import {
+	clearConfigValueCache,
+	resolveConfigValueOrThrow,
+	resolveConfigValueUncached,
+	resolveHeadersOrThrow,
+} from "./resolve-config-value.js";
 
 const Ajv = (AjvModule as any).default || AjvModule;
+const ajv = new Ajv();
 
 // Schema for OpenRouter routing preferences
 const OpenRouterRoutingSchema = Type.Object({
@@ -40,19 +47,36 @@ const VercelGatewayRoutingSchema = Type.Object({
 });
 
 // Schema for OpenAI compatibility settings
+const ReasoningEffortMapSchema = Type.Object({
+	minimal: Type.Optional(Type.String()),
+	low: Type.Optional(Type.String()),
+	medium: Type.Optional(Type.String()),
+	high: Type.Optional(Type.String()),
+	xhigh: Type.Optional(Type.String()),
+});
+
 const OpenAICompletionsCompatSchema = Type.Object({
 	supportsStore: Type.Optional(Type.Boolean()),
 	supportsDeveloperRole: Type.Optional(Type.Boolean()),
 	supportsReasoningEffort: Type.Optional(Type.Boolean()),
+	reasoningEffortMap: Type.Optional(ReasoningEffortMapSchema),
 	supportsUsageInStreaming: Type.Optional(Type.Boolean()),
 	maxTokensField: Type.Optional(Type.Union([Type.Literal("max_completion_tokens"), Type.Literal("max_tokens")])),
 	requiresToolResultName: Type.Optional(Type.Boolean()),
 	requiresAssistantAfterToolResult: Type.Optional(Type.Boolean()),
 	requiresThinkingAsText: Type.Optional(Type.Boolean()),
-	requiresMistralToolIds: Type.Optional(Type.Boolean()),
-	thinkingFormat: Type.Optional(Type.Union([Type.Literal("openai"), Type.Literal("zai"), Type.Literal("qwen")])),
+	thinkingFormat: Type.Optional(
+		Type.Union([
+			Type.Literal("openai"),
+			Type.Literal("openrouter"),
+			Type.Literal("zai"),
+			Type.Literal("qwen"),
+			Type.Literal("qwen-chat-template"),
+		]),
+	),
 	openRouterRouting: Type.Optional(OpenRouterRoutingSchema),
 	vercelGatewayRouting: Type.Optional(VercelGatewayRoutingSchema),
+	supportsStrictMode: Type.Optional(Type.Boolean()),
 });
 
 const OpenAIResponsesCompatSchema = Type.Object({
@@ -67,6 +91,7 @@ const ModelDefinitionSchema = Type.Object({
 	id: Type.String({ minLength: 1 }),
 	name: Type.Optional(Type.String({ minLength: 1 })),
 	api: Type.Optional(Type.String({ minLength: 1 })),
+	baseUrl: Type.Optional(Type.String({ minLength: 1 })),
 	reasoning: Type.Optional(Type.Boolean()),
 	input: Type.Optional(Type.Array(Type.Union([Type.Literal("text"), Type.Literal("image")]))),
 	cost: Type.Optional(
@@ -109,6 +134,7 @@ const ProviderConfigSchema = Type.Object({
 	apiKey: Type.Optional(Type.String({ minLength: 1 })),
 	api: Type.Optional(Type.String({ minLength: 1 })),
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
+	compat: Type.Optional(OpenAICompatSchema),
 	authHeader: Type.Optional(Type.Boolean()),
 	models: Type.Optional(Type.Array(ModelDefinitionSchema)),
 	modelOverrides: Type.Optional(Type.Record(Type.String(), ModelOverrideSchema)),
@@ -118,14 +144,32 @@ const ModelsConfigSchema = Type.Object({
 	providers: Type.Record(Type.String(), ProviderConfigSchema),
 });
 
+ajv.addSchema(ModelsConfigSchema, "ModelsConfig");
+
 type ModelsConfig = Static<typeof ModelsConfigSchema>;
 
-/** Provider override config (baseUrl, headers, apiKey) without custom models */
+/** Provider override config (baseUrl, compat) without request auth/headers */
 interface ProviderOverride {
 	baseUrl?: string;
-	headers?: Record<string, string>;
-	apiKey?: string;
+	compat?: Model<Api>["compat"];
 }
+
+interface ProviderRequestConfig {
+	apiKey?: string;
+	headers?: Record<string, string>;
+	authHeader?: boolean;
+}
+
+export type ResolvedRequestAuth =
+	| {
+			ok: true;
+			apiKey?: string;
+			headers?: Record<string, string>;
+	  }
+	| {
+			ok: false;
+			error: string;
+	  };
 
 /** Result of loading custom models from models.json */
 interface CustomModelsResult {
@@ -196,12 +240,6 @@ function applyModelOverride(model: Model<Api>, override: ModelOverride): Model<A
 		};
 	}
 
-	// Merge headers
-	if (override.headers) {
-		const resolvedHeaders = resolveHeaders(override.headers);
-		result.headers = resolvedHeaders ? { ...model.headers, ...resolvedHeaders } : model.headers;
-	}
-
 	// Deep merge compat
 	result.compat = mergeCompat(model.compat, override.compat);
 
@@ -216,7 +254,8 @@ export const clearApiKeyCache = clearConfigValueCache;
  */
 export class ModelRegistry {
 	private models: Model<Api>[] = [];
-	private customProviderApiKeys: Map<string, string> = new Map();
+	private providerRequestConfigs: Map<string, ProviderRequestConfig> = new Map();
+	private modelRequestHeaders: Map<string, Record<string, string>> = new Map();
 	private registeredProviders: Map<string, ProviderConfigInput> = new Map();
 	private loadError: string | undefined = undefined;
 
@@ -224,16 +263,6 @@ export class ModelRegistry {
 		readonly authStorage: AuthStorage,
 		private modelsJsonPath: string | undefined = join(getAgentDir(), "models.json"),
 	) {
-		// Set up fallback resolver for custom provider API keys
-		this.authStorage.setFallbackResolver((provider) => {
-			const keyConfig = this.customProviderApiKeys.get(provider);
-			if (keyConfig) {
-				return resolveConfigValue(keyConfig);
-			}
-			return undefined;
-		});
-
-		// Load models
 		this.loadModels();
 	}
 
@@ -241,8 +270,14 @@ export class ModelRegistry {
 	 * Reload models from disk (built-in + custom from models.json).
 	 */
 	refresh(): void {
-		this.customProviderApiKeys.clear();
+		this.providerRequestConfigs.clear();
+		this.modelRequestHeaders.clear();
 		this.loadError = undefined;
+
+		// Ensure dynamic API/OAuth registrations are rebuilt from current provider state.
+		resetApiProviders();
+		resetOAuthProviders();
+
 		this.loadModels();
 
 		for (const [providerName, config] of this.registeredProviders.entries()) {
@@ -298,13 +333,12 @@ export class ModelRegistry {
 			return models.map((m) => {
 				let model = m;
 
-				// Apply provider-level baseUrl/headers override
+				// Apply provider-level baseUrl/headers/compat override
 				if (providerOverride) {
-					const resolvedHeaders = resolveHeaders(providerOverride.headers);
 					model = {
 						...model,
 						baseUrl: providerOverride.baseUrl ?? model.baseUrl,
-						headers: resolvedHeaders ? { ...model.headers, ...resolvedHeaders } : model.headers,
+						compat: mergeCompat(model.compat, providerOverride.compat),
 					};
 				}
 
@@ -343,8 +377,7 @@ export class ModelRegistry {
 			const config: ModelsConfig = JSON.parse(content);
 
 			// Validate schema
-			const ajv = new Ajv();
-			const validate = ajv.compile(ModelsConfigSchema);
+			const validate = ajv.getSchema("ModelsConfig")!;
 			if (!validate(config)) {
 				const errors =
 					validate.errors?.map((e: any) => `  - ${e.instancePath || "root"}: ${e.message}`).join("\n") ||
@@ -359,22 +392,20 @@ export class ModelRegistry {
 			const modelOverrides = new Map<string, Map<string, ModelOverride>>();
 
 			for (const [providerName, providerConfig] of Object.entries(config.providers)) {
-				// Apply provider-level baseUrl/headers/apiKey override to built-in models when configured.
-				if (providerConfig.baseUrl || providerConfig.headers || providerConfig.apiKey) {
+				if (providerConfig.baseUrl || providerConfig.compat) {
 					overrides.set(providerName, {
 						baseUrl: providerConfig.baseUrl,
-						headers: providerConfig.headers,
-						apiKey: providerConfig.apiKey,
+						compat: providerConfig.compat,
 					});
 				}
 
-				// Store API key for fallback resolver.
-				if (providerConfig.apiKey) {
-					this.customProviderApiKeys.set(providerName, providerConfig.apiKey);
-				}
+				this.storeProviderRequestConfig(providerName, providerConfig);
 
 				if (providerConfig.modelOverrides) {
 					modelOverrides.set(providerName, new Map(Object.entries(providerConfig.modelOverrides)));
+					for (const [modelId, modelOverride] of Object.entries(providerConfig.modelOverrides)) {
+						this.storeModelHeaders(providerName, modelId, modelOverride.headers);
+					}
 				}
 			}
 
@@ -397,9 +428,11 @@ export class ModelRegistry {
 				providerConfig.modelOverrides && Object.keys(providerConfig.modelOverrides).length > 0;
 
 			if (models.length === 0) {
-				// Override-only config: needs baseUrl OR modelOverrides (or both)
-				if (!providerConfig.baseUrl && !hasModelOverrides) {
-					throw new Error(`Provider ${providerName}: must specify "baseUrl", "modelOverrides", or "models".`);
+				// Override-only config: needs baseUrl, compat, modelOverrides, or some combination.
+				if (!providerConfig.baseUrl && !providerConfig.compat && !hasModelOverrides) {
+					throw new Error(
+						`Provider ${providerName}: must specify "baseUrl", "compat", "modelOverrides", or "models".`,
+					);
 				}
 			} else {
 				// Custom models are merged into provider models and require endpoint + auth.
@@ -437,45 +470,29 @@ export class ModelRegistry {
 			const modelDefs = providerConfig.models ?? [];
 			if (modelDefs.length === 0) continue; // Override-only, no custom models
 
-			// Store API key config for fallback resolver
-			if (providerConfig.apiKey) {
-				this.customProviderApiKeys.set(providerName, providerConfig.apiKey);
-			}
-
 			for (const modelDef of modelDefs) {
 				const api = modelDef.api || providerConfig.api;
 				if (!api) continue;
 
-				// Merge headers: provider headers are base, model headers override
-				// Resolve env vars and shell commands in header values
-				const providerHeaders = resolveHeaders(providerConfig.headers);
-				const modelHeaders = resolveHeaders(modelDef.headers);
-				let headers = providerHeaders || modelHeaders ? { ...providerHeaders, ...modelHeaders } : undefined;
+				const compat = mergeCompat(providerConfig.compat, modelDef.compat);
+				this.storeModelHeaders(providerName, modelDef.id, modelDef.headers);
 
-				// If authHeader is true, add Authorization header with resolved API key
-				if (providerConfig.authHeader && providerConfig.apiKey) {
-					const resolvedKey = resolveConfigValue(providerConfig.apiKey);
-					if (resolvedKey) {
-						headers = { ...headers, Authorization: `Bearer ${resolvedKey}` };
-					}
-				}
-
-				// baseUrl is validated to exist for providers with models
-				// Apply defaults for optional fields
+				// Provider baseUrl is required when custom models are defined.
+				// Individual models can override it with modelDef.baseUrl.
 				const defaultCost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
 				models.push({
 					id: modelDef.id,
 					name: modelDef.name ?? modelDef.id,
 					api: api as Api,
 					provider: providerName,
-					baseUrl: providerConfig.baseUrl!,
+					baseUrl: modelDef.baseUrl ?? providerConfig.baseUrl!,
 					reasoning: modelDef.reasoning ?? false,
 					input: (modelDef.input ?? ["text"]) as ("text" | "image")[],
 					cost: modelDef.cost ?? defaultCost,
 					contextWindow: modelDef.contextWindow ?? 128000,
 					maxTokens: modelDef.maxTokens ?? 16384,
-					headers,
-					compat: modelDef.compat,
+					headers: undefined,
+					compat,
 				} as Model<Api>);
 			}
 		}
@@ -496,7 +513,7 @@ export class ModelRegistry {
 	 * This is a fast check that doesn't refresh OAuth tokens.
 	 */
 	getAvailable(): Model<Api>[] {
-		return this.models.filter((m) => this.authStorage.hasAuth(m.provider));
+		return this.models.filter((m) => this.hasConfiguredAuth(m));
 	}
 
 	/**
@@ -509,15 +526,100 @@ export class ModelRegistry {
 	/**
 	 * Get API key for a model.
 	 */
-	async getApiKey(model: Model<Api>): Promise<string | undefined> {
-		return this.authStorage.getApiKey(model.provider);
+	hasConfiguredAuth(model: Model<Api>): boolean {
+		return (
+			this.authStorage.hasAuth(model.provider) ||
+			this.providerRequestConfigs.get(model.provider)?.apiKey !== undefined
+		);
+	}
+
+	private getModelRequestKey(provider: string, modelId: string): string {
+		return `${provider}:${modelId}`;
+	}
+
+	private storeProviderRequestConfig(
+		providerName: string,
+		config: {
+			apiKey?: string;
+			headers?: Record<string, string>;
+			authHeader?: boolean;
+		},
+	): void {
+		if (!config.apiKey && !config.headers && !config.authHeader) {
+			return;
+		}
+
+		this.providerRequestConfigs.set(providerName, {
+			apiKey: config.apiKey,
+			headers: config.headers,
+			authHeader: config.authHeader,
+		});
+	}
+
+	private storeModelHeaders(providerName: string, modelId: string, headers?: Record<string, string>): void {
+		const key = this.getModelRequestKey(providerName, modelId);
+		if (!headers || Object.keys(headers).length === 0) {
+			this.modelRequestHeaders.delete(key);
+			return;
+		}
+		this.modelRequestHeaders.set(key, headers);
+	}
+
+	/**
+	 * Get API key and request headers for a model.
+	 */
+	async getApiKeyAndHeaders(model: Model<Api>): Promise<ResolvedRequestAuth> {
+		try {
+			const providerConfig = this.providerRequestConfigs.get(model.provider);
+			const apiKeyFromAuthStorage = await this.authStorage.getApiKey(model.provider, { includeFallback: false });
+			const apiKey =
+				apiKeyFromAuthStorage ??
+				(providerConfig?.apiKey
+					? resolveConfigValueOrThrow(providerConfig.apiKey, `API key for provider "${model.provider}"`)
+					: undefined);
+
+			const providerHeaders = resolveHeadersOrThrow(providerConfig?.headers, `provider "${model.provider}"`);
+			const modelHeaders = resolveHeadersOrThrow(
+				this.modelRequestHeaders.get(this.getModelRequestKey(model.provider, model.id)),
+				`model "${model.provider}/${model.id}"`,
+			);
+
+			let headers =
+				model.headers || providerHeaders || modelHeaders
+					? { ...model.headers, ...providerHeaders, ...modelHeaders }
+					: undefined;
+
+			if (providerConfig?.authHeader) {
+				if (!apiKey) {
+					return { ok: false, error: `No API key found for "${model.provider}"` };
+				}
+				headers = { ...headers, Authorization: `Bearer ${apiKey}` };
+			}
+
+			return {
+				ok: true,
+				apiKey,
+				headers: headers && Object.keys(headers).length > 0 ? headers : undefined,
+			};
+		} catch (error) {
+			return {
+				ok: false,
+				error: error instanceof Error ? error.message : String(error),
+			};
+		}
 	}
 
 	/**
 	 * Get API key for a provider.
 	 */
 	async getApiKeyForProvider(provider: string): Promise<string | undefined> {
-		return this.authStorage.getApiKey(provider);
+		const apiKey = await this.authStorage.getApiKey(provider, { includeFallback: false });
+		if (apiKey !== undefined) {
+			return apiKey;
+		}
+
+		const providerApiKey = this.providerRequestConfigs.get(provider)?.apiKey;
+		return providerApiKey ? resolveConfigValueUncached(providerApiKey) : undefined;
 	}
 
 	/**
@@ -536,8 +638,48 @@ export class ModelRegistry {
 	 * If provider has oauth: registers OAuth provider for /login support.
 	 */
 	registerProvider(providerName: string, config: ProviderConfigInput): void {
-		this.registeredProviders.set(providerName, config);
+		this.validateProviderConfig(providerName, config);
 		this.applyProviderConfig(providerName, config);
+		this.registeredProviders.set(providerName, config);
+	}
+
+	/**
+	 * Unregister a previously registered provider.
+	 *
+	 * Removes the provider from the registry and reloads models from disk so that
+	 * built-in models overridden by this provider are restored to their original state.
+	 * Also resets dynamic OAuth and API stream registrations before reapplying
+	 * remaining dynamic providers.
+	 * Has no effect if the provider was never registered.
+	 */
+	unregisterProvider(providerName: string): void {
+		if (!this.registeredProviders.has(providerName)) return;
+		this.registeredProviders.delete(providerName);
+		this.refresh();
+	}
+
+	private validateProviderConfig(providerName: string, config: ProviderConfigInput): void {
+		if (config.streamSimple && !config.api) {
+			throw new Error(`Provider ${providerName}: "api" is required when registering streamSimple.`);
+		}
+
+		if (!config.models || config.models.length === 0) {
+			return;
+		}
+
+		if (!config.baseUrl) {
+			throw new Error(`Provider ${providerName}: "baseUrl" is required when defining models.`);
+		}
+		if (!config.apiKey && !config.oauth) {
+			throw new Error(`Provider ${providerName}: "apiKey" or "oauth" is required when defining models.`);
+		}
+
+		for (const modelDef of config.models) {
+			const api = modelDef.api || config.api;
+			if (!api) {
+				throw new Error(`Provider ${providerName}, model ${modelDef.id}: no "api" specified.`);
+			}
+		}
 	}
 
 	private applyProviderConfig(providerName: string, config: ProviderConfigInput): void {
@@ -552,66 +694,40 @@ export class ModelRegistry {
 		}
 
 		if (config.streamSimple) {
-			if (!config.api) {
-				throw new Error(`Provider ${providerName}: "api" is required when registering streamSimple.`);
-			}
 			const streamSimple = config.streamSimple;
-			registerApiProvider({
-				api: config.api,
-				stream: (model, context, options) => streamSimple(model, context, options as SimpleStreamOptions),
-				streamSimple,
-			});
+			registerApiProvider(
+				{
+					api: config.api!,
+					stream: (model, context, options) => streamSimple(model, context, options as SimpleStreamOptions),
+					streamSimple,
+				},
+				`provider:${providerName}`,
+			);
 		}
 
-		// Store API key for auth resolution
-		if (config.apiKey) {
-			this.customProviderApiKeys.set(providerName, config.apiKey);
-		}
+		this.storeProviderRequestConfig(providerName, config);
 
 		if (config.models && config.models.length > 0) {
 			// Full replacement: remove existing models for this provider
 			this.models = this.models.filter((m) => m.provider !== providerName);
 
-			// Validate required fields
-			if (!config.baseUrl) {
-				throw new Error(`Provider ${providerName}: "baseUrl" is required when defining models.`);
-			}
-			if (!config.apiKey && !config.oauth) {
-				throw new Error(`Provider ${providerName}: "apiKey" or "oauth" is required when defining models.`);
-			}
-
 			// Parse and add new models
 			for (const modelDef of config.models) {
 				const api = modelDef.api || config.api;
-				if (!api) {
-					throw new Error(`Provider ${providerName}, model ${modelDef.id}: no "api" specified.`);
-				}
-
-				// Merge headers
-				const providerHeaders = resolveHeaders(config.headers);
-				const modelHeaders = resolveHeaders(modelDef.headers);
-				let headers = providerHeaders || modelHeaders ? { ...providerHeaders, ...modelHeaders } : undefined;
-
-				// If authHeader is true, add Authorization header
-				if (config.authHeader && config.apiKey) {
-					const resolvedKey = resolveConfigValue(config.apiKey);
-					if (resolvedKey) {
-						headers = { ...headers, Authorization: `Bearer ${resolvedKey}` };
-					}
-				}
+				this.storeModelHeaders(providerName, modelDef.id, modelDef.headers);
 
 				this.models.push({
 					id: modelDef.id,
 					name: modelDef.name,
 					api: api as Api,
 					provider: providerName,
-					baseUrl: config.baseUrl,
+					baseUrl: config.baseUrl!,
 					reasoning: modelDef.reasoning,
 					input: modelDef.input as ("text" | "image")[],
 					cost: modelDef.cost,
 					contextWindow: modelDef.contextWindow,
 					maxTokens: modelDef.maxTokens,
-					headers,
+					headers: undefined,
 					compat: modelDef.compat,
 				} as Model<Api>);
 			}
@@ -623,15 +739,13 @@ export class ModelRegistry {
 					this.models = config.oauth.modifyModels(this.models, cred);
 				}
 			}
-		} else if (config.baseUrl) {
-			// Override-only: update baseUrl/headers for existing models
-			const resolvedHeaders = resolveHeaders(config.headers);
+		} else if (config.baseUrl || config.headers) {
+			// Override-only: update baseUrl for existing models. Request headers are resolved per request.
 			this.models = this.models.map((m) => {
 				if (m.provider !== providerName) return m;
 				return {
 					...m,
 					baseUrl: config.baseUrl ?? m.baseUrl,
-					headers: resolvedHeaders ? { ...m.headers, ...resolvedHeaders } : m.headers,
 				};
 			});
 		}
@@ -654,6 +768,7 @@ export interface ProviderConfigInput {
 		id: string;
 		name: string;
 		api?: Api;
+		baseUrl?: string;
 		reasoning: boolean;
 		input: ("text" | "image")[];
 		cost: { input: number; output: number; cacheRead: number; cacheWrite: number };

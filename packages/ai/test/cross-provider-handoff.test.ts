@@ -93,7 +93,7 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	// Mistral
 	{ provider: "mistral", model: "devstral-medium-latest", label: "mistral-devstral-medium" },
 	// MiniMax
-	{ provider: "minimax", model: "MiniMax-M2.1", label: "minimax-m2.1" },
+	{ provider: "minimax", model: "MiniMax-M2.7", label: "minimax-m2.7" },
 	// OpenCode Zen
 	{ provider: "opencode", model: "big-pickle", label: "zen-big-pickle" },
 	{ provider: "opencode", model: "claude-sonnet-4-5", label: "zen-claude-sonnet-4-5" },
@@ -101,6 +101,9 @@ const PROVIDER_MODEL_PAIRS: ProviderModelPair[] = [
 	{ provider: "opencode", model: "glm-4.7-free", label: "zen-glm-4.7-free" },
 	{ provider: "opencode", model: "gpt-5.2-codex", label: "zen-gpt-5.2-codex" },
 	{ provider: "opencode", model: "minimax-m2.1-free", label: "zen-minimax-m2.1-free" },
+	// OpenCode Go
+	{ provider: "opencode-go", model: "kimi-k2.5", label: "go-kimi-k2.5" },
+	{ provider: "opencode-go", model: "minimax-m2.5", label: "go-minimax-m2.5" },
 ];
 
 // Cached context structure

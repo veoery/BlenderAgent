@@ -16,7 +16,7 @@ import { existsSync, readFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import { MomSettingsManager, syncLogToSessionManager } from "./context.js";
+import { createMomSettingsManager, syncLogToSessionManager } from "./context.js";
 import * as log from "./log.js";
 import { createExecutor, type SandboxConfig } from "./sandbox.js";
 import type { ChannelInfo, SlackContext, UserInfo } from "./slack.js";
@@ -424,7 +424,7 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 	// Use a fixed context.jsonl file per channel (not timestamped like coding-agent)
 	const contextFile = join(channelDir, "context.jsonl");
 	const sessionManager = SessionManager.open(contextFile, channelDir);
-	const settingsManager = new MomSettingsManager(join(channelDir, ".."));
+	const settingsManager = createMomSettingsManager(join(channelDir, ".."));
 
 	// Create AuthStorage and ModelRegistry
 	// Auth stored outside workspace so agent can't access it
@@ -458,7 +458,6 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 		getAgentsFiles: () => ({ agentsFiles: [] }),
 		getSystemPrompt: () => systemPrompt,
 		getAppendSystemPrompt: () => [],
-		getPathMetadata: () => new Map(),
 		extendResources: () => {},
 		reload: async () => {},
 	};
@@ -469,7 +468,7 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 	const session = new AgentSession({
 		agent,
 		sessionManager,
-		settingsManager: settingsManager as any,
+		settingsManager,
 		cwd: process.cwd(),
 		modelRegistry,
 		resourceLoader,
@@ -601,15 +600,14 @@ function createRunner(sandboxConfig: SandboxConfig, channelId: string, channelDi
 					queue.enqueueMessage(text, "thread", "response thread", false);
 				}
 			}
-		} else if (event.type === "auto_compaction_start") {
-			log.logInfo(`Auto-compaction started (reason: ${(event as any).reason})`);
+		} else if (event.type === "compaction_start") {
+			log.logInfo(`Compaction started (reason: ${event.reason})`);
 			queue.enqueue(() => ctx.respond("_Compacting context..._", false), "compaction start");
-		} else if (event.type === "auto_compaction_end") {
-			const compEvent = event as any;
-			if (compEvent.result) {
-				log.logInfo(`Auto-compaction complete: ${compEvent.result.tokensBefore} tokens compacted`);
-			} else if (compEvent.aborted) {
-				log.logInfo("Auto-compaction aborted");
+		} else if (event.type === "compaction_end") {
+			if (event.result) {
+				log.logInfo(`Compaction complete: ${event.result.tokensBefore} tokens compacted`);
+			} else if (event.aborted) {
+				log.logInfo("Compaction aborted");
 			}
 		} else if (event.type === "auto_retry_start") {
 			const retryEvent = event as any;

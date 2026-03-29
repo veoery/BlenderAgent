@@ -5,7 +5,8 @@
  *
  * Test with: npx tsx src/cli-new.ts [args...]
  */
-import { spawn } from "child_process";
+import { spawn } from "node:child_process";
+import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
 import { APP_NAME, ENV_BLENDER_BRIDGE_DIR, getBlenderBridgeDir, getBundledBlenderBridgePath } from "./config.js";
 import { main } from "./main.js";
 
@@ -69,6 +70,9 @@ function launchBlender(): void {
 		console.error(`[vibe-blender] warning: failed to launch Blender from "${blenderPath}": ${message}`);
 	}
 }
+
+process.emitWarning = (() => {}) as typeof process.emitWarning;
+setGlobalDispatcher(new EnvHttpProxyAgent());
 
 const rawArgs = process.argv.slice(2);
 const noBlenderFlag = rawArgs.includes("--no-blender");

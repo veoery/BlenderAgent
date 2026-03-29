@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, type ThinkingLevel } from "@mariozechner/pi-agent-core";
-import type { Message, Model } from "@mariozechner/pi-ai";
+import { type Message, type Model, streamSimple } from "@mariozechner/pi-ai";
 import { getAgentDir, getDocsPath } from "../config.js";
 import { AgentSession } from "./agent-session.js";
 import { AuthStorage } from "./auth-storage.js";
@@ -11,7 +11,7 @@ import { ModelRegistry } from "./model-registry.js";
 import { findInitialModel } from "./model-resolver.js";
 import type { ResourceLoader } from "./resource-loader.js";
 import { DefaultResourceLoader } from "./resource-loader.js";
-import { SessionManager } from "./session-manager.js";
+import { getDefaultSessionDir, SessionManager } from "./session-manager.js";
 import { SettingsManager } from "./settings-manager.js";
 import { time } from "./timings.js";
 import {
@@ -35,6 +35,7 @@ import {
 	readTool,
 	type Tool,
 	type ToolName,
+	withFileMutationQueue,
 	writeTool,
 } from "./tools/index.js";
 
@@ -54,7 +55,7 @@ export interface CreateAgentSessionOptions {
 	/** Thinking level. Default: from settings, else 'medium' (clamped to model capabilities) */
 	thinkingLevel?: ThinkingLevel;
 	/** Models available for cycling (Ctrl+P in interactive mode) */
-	scopedModels?: Array<{ model: Model<any>; thinkingLevel: ThinkingLevel }>;
+	scopedModels?: Array<{ model: Model<any>; thinkingLevel?: ThinkingLevel }>;
 
 	/** Built-in tools to use. Default: codingTools [read, bash, edit, write] */
 	tools?: Tool[];
@@ -89,7 +90,6 @@ export type {
 	ExtensionContext,
 	ExtensionFactory,
 	SlashCommandInfo,
-	SlashCommandLocation,
 	SlashCommandSource,
 	ToolDefinition,
 } from "./extensions/index.js";
@@ -109,6 +109,7 @@ export {
 	codingTools,
 	readOnlyTools,
 	allTools as allBuiltInTools,
+	withFileMutationQueue,
 	// Tool factories (for custom cwd)
 	createCodingTools,
 	createReadOnlyTools,
@@ -174,7 +175,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	const modelRegistry = options.modelRegistry ?? new ModelRegistry(authStorage, modelsPath);
 
 	const settingsManager = options.settingsManager ?? SettingsManager.create(cwd, agentDir);
-	const sessionManager = options.sessionManager ?? SessionManager.create(cwd);
+	const sessionManager = options.sessionManager ?? SessionManager.create(cwd, getDefaultSessionDir(cwd, agentDir));
 
 	if (!resourceLoader) {
 		resourceLoader = new DefaultResourceLoader({ cwd, agentDir, settingsManager });
@@ -193,7 +194,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 	// If session has data, try to restore model from it
 	if (!model && hasExistingSession && existingSession.model) {
 		const restoredModel = modelRegistry.find(existingSession.model.provider, existingSession.model.modelId);
-		if (restoredModel && (await modelRegistry.getApiKey(restoredModel))) {
+		if (restoredModel && modelRegistry.hasConfiguredAuth(restoredModel)) {
 			model = restoredModel;
 		}
 		if (!model) {
@@ -292,6 +293,24 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			tools: [],
 		},
 		convertToLlm: convertToLlmWithBlockImages,
+		streamFn: async (model, context, options) => {
+			const auth = await modelRegistry.getApiKeyAndHeaders(model);
+			if (!auth.ok) {
+				throw new Error(auth.error);
+			}
+			return streamSimple(model, context, {
+				...options,
+				apiKey: auth.apiKey,
+				headers: auth.headers || options?.headers ? { ...auth.headers, ...options?.headers } : undefined,
+			});
+		},
+		onPayload: async (payload, _model) => {
+			const runner = extensionRunnerRef.current;
+			if (!runner?.hasHandlers("before_provider_request")) {
+				return payload;
+			}
+			return runner.emitBeforeProviderRequest(payload);
+		},
 		sessionId: sessionManager.getSessionId(),
 		transformContext: async (messages) => {
 			const runner = extensionRunnerRef.current;
@@ -303,31 +322,6 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		transport: settingsManager.getTransport(),
 		thinkingBudgets: settingsManager.getThinkingBudgets(),
 		maxRetryDelayMs: settingsManager.getRetrySettings().maxDelayMs,
-		getApiKey: async (provider) => {
-			// Use the provider argument from the in-flight request;
-			// agent.state.model may already be switched mid-turn.
-			const resolvedProvider = provider || agent.state.model?.provider;
-			if (!resolvedProvider) {
-				throw new Error("No model selected");
-			}
-			const key = await modelRegistry.getApiKeyForProvider(resolvedProvider);
-			if (!key) {
-				const model = agent.state.model;
-				const isOAuth = model && modelRegistry.isUsingOAuth(model);
-				if (isOAuth) {
-					throw new Error(
-						`Authentication failed for "${resolvedProvider}". ` +
-							`Credentials may have expired or network is unavailable. ` +
-							`Run '/login ${resolvedProvider}' to re-authenticate.`,
-					);
-				}
-				throw new Error(
-					`No API key found for "${resolvedProvider}". ` +
-						`Set an API key environment variable or run '/login ${resolvedProvider}'.`,
-				);
-			}
-			return key;
-		},
 	});
 
 	// Restore messages if session has existing data
