@@ -442,7 +442,7 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			skillPaths: [getBundledBlenderSkillsDir()],
 		}));
 
-		pi.on("before_agent_start", async (event, ctx) => {
+		pi.on("before_agent_start", async (_event, ctx) => {
 			let liveContextPrompt = "";
 			try {
 				const liveContext = await blenderSessionContext({
@@ -456,9 +456,11 @@ export function getBuiltInBlenderExtensionFactories(appName: string = APP_NAME):
 			}
 
 			return {
-				systemPrompt: [event.systemPrompt, BLENDER_WORKFLOW_GUIDANCE, liveContextPrompt]
-					.filter((part) => part.length > 0)
-					.join("\n\n"),
+				message: {
+					customType: "blender_context",
+					content: [BLENDER_WORKFLOW_GUIDANCE, liveContextPrompt].filter((part) => part.length > 0).join("\n\n"),
+					display: true,
+				},
 			};
 		});
 	};

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getBuiltInBlenderExtensionFactories, isVibeBlenderApp } from "../src/blender/extension.js";
 import { getBundledBlenderSkillsDir } from "../src/blender/runtime.js";
 import { createEventBus } from "../src/core/event-bus.js";
+import type { BeforeAgentStartEventResult, ExtensionContext } from "../src/core/extensions/index.js";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.js";
 
 describe("built-in blender extension", () => {
@@ -101,6 +102,39 @@ describe("built-in blender extension", () => {
 		const properties = critiqueTool?.definition.parameters.properties as Record<string, unknown>;
 		expect(properties.viewAdequacy).toBeDefined();
 		expect(JSON.stringify(properties.viewAdequacy)).toContain("render view");
+	});
+
+	it("injects Blender guidance as a visible message instead of replacing the system prompt", async () => {
+		const [factory] = getBuiltInBlenderExtensionFactories("vibe-blender");
+		const runtime = createExtensionRuntime();
+		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
+		const beforeAgentStartHandlers = extension.handlers.get("before_agent_start");
+		expect(beforeAgentStartHandlers).toHaveLength(1);
+		const beforeAgentStart = beforeAgentStartHandlers?.[0];
+		expect(beforeAgentStart).toBeDefined();
+		if (!beforeAgentStart) {
+			throw new Error("before_agent_start handler missing");
+		}
+
+		const result = (await beforeAgentStart(
+			{
+				type: "before_agent_start",
+				prompt: "Create a cube",
+				images: undefined,
+				systemPrompt: "Base system prompt",
+			},
+			{
+				cwd: process.cwd(),
+			} as ExtensionContext,
+		)) as BeforeAgentStartEventResult | undefined;
+
+		expect(result?.systemPrompt).toBeUndefined();
+		expect(result?.message).toBeDefined();
+		expect(result?.message?.customType).toBe("blender_context");
+		expect(result?.message?.display).toBe(true);
+		expect(result?.message?.content).toContain(
+			"You are operating inside vibe-blender with Blender-native tools available.",
+		);
 	});
 
 	it("ships bundled Blender skills", () => {
