@@ -34,7 +34,27 @@ out.jsonl
 pi-*.html
 out.html
 packages/coding-agent/binaries/
-todo.md
+
+# Private planning docs
+[Tt][Oo][Dd][Oo].md
+[Tt][Oo][Dd][Oo][Ss].md
+[Tt][Oo][Dd][Oo]-*.md
+[Tt][Oo][Dd][Oo]_*.md
+*-[Tt][Oo][Dd][Oo].md
+*_[Tt][Oo][Dd][Oo].md
+*-[Tt][Oo][Dd][Oo]-*.md
+*_[Tt][Oo][Dd][Oo]_*.md
+[Pp][Ll][Aa][Nn].md
+[Pp][Ll][Aa][Nn][Ss].md
+[Pp][Ll][Aa][Nn]-*.md
+[Pp][Ll][Aa][Nn]_*.md
+[Pp][Ll][Aa][Nn][Nn][Ii][Nn][Gg].md
+[Pp][Ll][Aa][Nn][Nn][Ii][Nn][Gg]-*.md
+[Pp][Ll][Aa][Nn][Nn][Ii][Nn][Gg]_*.md
+*-[Pp][Ll][Aa][Nn].md
+*_[Pp][Ll][Aa][Nn].md
+*-[Pp][Ll][Aa][Nn]-*.md
+*_[Pp][Ll][Aa][Nn]_*.md
 
 # Tmp
 coffee_table_workspace/

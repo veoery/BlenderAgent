@@ -1,54 +1,27 @@
-# vibe-blender
+# Vibe Blender
 
-[![vibe-blender demo preview](assets/BlenderAgent_0226_3_preview.gif)](assets/BlenderAgent_0226_3.mp4)
+Vibe Blender is an AI-assisted Blender workspace for creating, editing, and inspecting 3D scenes with natural language.
 
-`vibe-blender` is a Blender-native agent workflow built on the pi coding-agent runtime.
+Instead of asking an assistant to only describe Blender steps, you can ask it to work directly in Blender: create objects, adjust materials, inspect the current scene, save camera views, render images, and continue improving the same `.blend` file across follow-up prompts.
 
-The model works through Blender-specific tools instead of subagents. It can initialize a managed workspace, inspect live Blender session context, execute Blender Python, inspect scene state, save named views, and render images while keeping a persistent `model.blend` in one workspace.
+[![Vibe Blender demo preview](assets/BlenderAgent_0226_3_preview.gif)](assets/BlenderAgent_0226_3.mp4)
 
-## Current direction
+## What You Can Do
 
-The repo is moving toward one primary workflow:
-
-- one `vibe-blender` runtime
-- Blender tools active by default
-- reusable Blender skills for `create`, `edit`, `analyze`, and reference-guided work
-- one explicit workspace per task
-
-## Built-in Blender tools
-
-When you start `vibe-blender`, these Blender tools are loaded automatically:
-
-- `blender_workspace_init`
-- `blender_execute_python`
-- `blender_session_context`
-- `blender_scene_info`
-- `blender_save_view`
-- `blender_render`
-- `blender_log_critique`
-
-Generic coding tools such as `read`, `edit`, `write`, `grep`, `find`, `ls`, and `bash` remain available for logs, manifests, and generated scripts.
-
-## Built-in Blender skills
-
-The bundled Blender extension also provides these skills:
-
-- `/skill:blender-create`
-- `/skill:blender-edit`
-- `/skill:blender-analyze`
-- `/skill:blender-with-reference`
-
-These skills add workflow guidance. The actual scene work still happens through Blender tools.
-
-`vibe-blender` also appends a compact live Blender session summary to the turn prompt when the bridge-enabled Blender UI responds quickly enough. This keeps active-object, selection, mode, and viewport context visible to the model without replacing the explicit `blender_session_context` tool.
+- Create Blender scenes from text prompts
+- Edit an existing scene in follow-up turns
+- Use the current Blender selection or viewport as context
+- Save named views and render from them later
+- Keep each project in a persistent workspace with its own `model.blend`
+- Review scene objects, cameras, lights, materials, and saved views
 
 ## Requirements
 
+- macOS, Linux, or Windows with Node.js 20 or newer
 - Blender installed locally
-- this repo checked out locally
-- dependencies installed
+- An AI provider/API setup supported by the underlying pi coding-agent runtime
 
-Recommended Blender binary on macOS:
+On macOS, you can point Vibe Blender at your Blender install with:
 
 ```bash
 export BLENDER_PATH="/Applications/Blender.app/Contents/MacOS/Blender"
@@ -56,57 +29,62 @@ export BLENDER_PATH="/Applications/Blender.app/Contents/MacOS/Blender"
 
 ## Setup
 
-From the repo root:
+Clone the repo and install dependencies:
 
 ```bash
 npm install
 ```
 
-## Usage
-
-Start the CLI:
+Start Vibe Blender from the repo root:
 
 ```bash
 ./pi-test.sh
 ```
 
-Or run the built CLI directly:
+If the CLI is installed or linked on your machine, you can also run:
 
 ```bash
 vibe-blender
 ```
 
-Example prompts:
+## Example Prompts
+
+Create a new scene:
 
 ```text
-Use /skill:blender-create and build a modern coffee table in Blender.
+Use /skill:blender-create and build a modern walnut coffee table with brass legs.
 ```
 
+Continue editing the same workspace:
+
 ```text
-Initialize a workspace and create a stylized desk lamp in Blender.
+Use /skill:blender-edit with workspace=outputs/20260306_120000 and make the tabletop thicker.
 ```
 
+Inspect what is in a scene:
+
 ```text
-Use /skill:blender-edit with workspace=outputs/20260306_120000 and make the lamp shade wider.
+Use /skill:blender-analyze with workspace=outputs/20260306_120000 and summarize the objects, lights, cameras, and materials.
 ```
 
+Render from the current Blender view:
+
 ```text
-Use /skill:blender-analyze with workspace=outputs/20260306_120000 and tell me which objects and materials are present.
+Use the current viewport, save it as hero-front, and render the workspace from that view.
 ```
 
-## Workspace model
+## Workspaces
 
-Every Blender task should use an explicit `workspace` path. The tools return the workspace path so follow-up turns can continue the same task without guessing.
-`blender_workspace_init` also tries to open that workspace `model.blend` in the live Blender session automatically.
+Vibe Blender keeps each project in a workspace under `outputs/`. A workspace contains the live `.blend` file, generated scripts, scene inspection data, logs, and renders.
 
-Typical structure:
+Typical workspace:
 
 ```text
-outputs/TIMESTAMP/
+outputs/20260306_120000/
 ├── blender-workspace.json
-├── critique.log
 ├── model.blend
 ├── script.py
+├── critique.log
 └── iteration_01/
     ├── scene-info.json
     ├── script.py
@@ -115,139 +93,32 @@ outputs/TIMESTAMP/
         └── render.png
 ```
 
-The workspace root `script.py` is the canonical current Blender script. Each execution snapshots that file into the current `iteration_XX/` folder before running inside the live bridge-enabled Blender UI session for that workspace, so scene edits stay visible in the open Blender window without reopening the file.
-The workspace root `critique.log` stores the render critique for each create/edit iteration, including the non-scored view adequacy judgment for the current render perspective.
-`blender_scene_info` writes `scene-info.json` into the current iteration folder.
-`blender_session_context` inspects the live Blender UI session for transient context such as the open `.blend`, active object, selected objects, current mode, and current viewport.
-`blender_scene_info` can inspect all scene categories by default, or only a subset via `categories` such as `["objects"]`, `["cameras", "cameraSettings"]`, `["cameras", "lights"]`, `["views"]`, or the full set.
-`cameras` reports camera scene objects with transform data and their linked camera settings names.
-`cameraSettings` reports the camera data blocks with lens, clip, sensor, and ortho settings.
-`views` reports saved workspace views from the manifest.
-`blender_save_view` with `source="active-camera"` captures the current live Blender UI viewport into a dedicated camera object, sets it as `scene.camera`, saves the `.blend`, and stores the view name -> camera object mapping in the workspace manifest. This requires the Blender UI process launched by `vibe-blender` or another Blender session started with the bundled live bridge script.
-`blender_render` now uses a more general render API. It defaults to `renderMethod="live"`, `viewSource="camera"`, and `viewportShading="material-preview"`, which keeps renders stable by using the selected camera or saved view instead of whatever transient viewport angle the user happens to be orbiting. Use `viewSource="current-view"` only when the user explicitly wants the raw current viewport. Live viewport renders disable overlays automatically so grids, axes, and other viewport clutter are not captured. Use `renderMethod="background"` when you want a normal headless scene render, optionally with `renderEngine="eevee"`, `renderEngine="cycles"`, or `renderEngine="workbench"`.
-When authoring Blender Python materials, prefer name-based Principled BSDF socket access such as `bsdf.inputs["Base Color"]`, `bsdf.inputs["Roughness"]`, and `bsdf.inputs["Metallic"]` instead of hard-coded socket indices. Principled socket ordering can change across Blender versions, and index-based assignments can produce materials that disappear or render incorrectly in Material Preview and Rendered mode even though the geometry is still visible in Solid mode.
-For create/edit work, the model should use the normal `write` and `edit` tools on `$workspace/script.py`, then call `blender_execute_python` with `script_path` pointing to that file. If the bridge-enabled Blender session is not already showing that workspace `model.blend`, vibe-blender will open it automatically unless Blender has unsaved changes in another scene.
+Use the same `workspace=...` path in follow-up prompts when you want to keep working on the same scene.
 
-## Live Session Context
+## Built-In Skills
 
-Use `blender_session_context` when the user refers to live Blender UI state such as:
+Vibe Blender includes focused Blender workflows:
 
-- "update it"
-- "change the selected object"
-- "render from here"
-- "use the current view"
+- `/skill:blender-create` for new scenes
+- `/skill:blender-edit` for changing an existing workspace
+- `/skill:blender-analyze` for scene review and inspection
+- `/skill:blender-with-reference` for work guided by reference material
 
-It reports transient bridge-enabled Blender session state such as:
+You can mention these skills directly in your prompt when you want a specific workflow.
 
-- open `.blend` path
-- whether the file is dirty
-- active scene and render camera
-- active object
-- selected objects
-- current Blender mode
-- primary `VIEW_3D` viewport summary
+## Tips
 
-Example:
+- Keep one workspace per idea or asset.
+- Render after meaningful visual changes so you can review the result.
+- Refer to saved views by name when you want repeatable renders.
+- Mention selected objects or the current viewport when you want Vibe Blender to use live Blender context.
+- Keep prompts concrete: describe the shape, materials, style, scale, and camera angle you want.
 
-```json
-{
-  "workspace": "outputs/modern_timber_house",
-  "include": ["selection", "mode", "viewport"]
-}
-```
+## Project Status
 
-Use this tool to resolve ambiguous references before editing code. It does not replace explicit `workspace` arguments for other Blender tools.
+This project is currently source-first. The public entry point is this repository, and the main user workflow is running Vibe Blender locally with Blender installed.
 
-When the live Blender bridge is available, `vibe-blender` also injects a compact prompt summary from the same session context, such as:
-
-- open `.blend`
-- inferred workspace
-- current scene and active camera
-- current mode and active object
-- selected objects
-- viewport perspective and shading
-
-The explicit tool remains the source for full structured inspection and debugging.
-
-## Save Current View
-
-To save the current Blender viewport as a reusable render view:
-
-1. Start `vibe-blender` so Blender launches with the live bridge script loaded.
-2. Open the workspace `model.blend` in that bridge-enabled Blender session.
-3. Move a `3D Viewport` (`VIEW_3D`) to the exact view you want to save.
-4. Call `blender_save_view` with `source="active-camera"` and a saved view name.
-
-Example:
-
-```json
-{
-  "workspace": "outputs/modern_timber_house",
-  "name": "hero-front",
-  "source": "active-camera"
-}
-```
-
-Optional dedicated camera name:
-
-```json
-{
-  "workspace": "outputs/modern_timber_house",
-  "name": "hero-front",
-  "source": "active-camera",
-  "camera_name": "hero-front-cam"
-}
-```
-
-Later, render from that saved view:
-
-```json
-{
-  "workspace": "outputs/modern_timber_house",
-  "view": "hero-front"
-}
-```
-
-Explicit final render path:
-
-```json
-{
-  "workspace": "outputs/modern_timber_house",
-  "view": "hero-front",
-  "renderMethod": "background"
-}
-```
-
-Explicit current viewport render:
-
-```json
-{
-  "workspace": "outputs/modern_timber_house",
-  "renderMethod": "live",
-  "viewSource": "current-view",
-  "viewportShading": "material-preview"
-}
-```
-
-Notes:
-
-- The user does not need to manually save after adjusting the viewport; `blender_save_view` saves the `.blend` after capturing the view.
-- For predictable current-view capture, set the view after the workspace `model.blend` is open in Blender. If Blender is still on the default startup scene, vibe-blender can auto-open the workspace file before the operation runs.
-- If multiple `VIEW_3D` areas are open, vibe-blender captures the largest one.
-- If the bridge-enabled Blender session is still on the default startup scene, vibe-blender will auto-open the requested workspace `model.blend` before execute/save-view operations. It will not auto-switch away from another file that has unsaved changes.
-- `blender_workspace_init` also performs that auto-open step, so creating or reopening a workspace usually brings the right `.blend` into the live Blender session immediately.
-
-## Design principles
-
-- use Blender tools directly instead of subagents
-- keep `workspace` explicit in Blender tool calls
-- inspect before mutating when editing existing scenes
-- render after meaningful scene changes
-- keep one persistent `.blend` per workspace
-
-## Legacy note
-
-Older subagent-oriented CREATE workflow material remains in `.pi/agents/` as legacy reference only. It is no longer the primary architecture described by this repo.
+The code is built on the pi TypeScript monorepo and includes reusable packages for AI providers, the coding-agent runtime, terminal UI, web UI, and supporting tools. Those internals are available for contributors, but users only need the setup and usage steps above.
 
 ## License
 
