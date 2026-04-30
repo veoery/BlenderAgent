@@ -1,6 +1,113 @@
 # Changelog
 
-## [Unreleased]
+## [0.70.6] - 2026-04-28
+
+## [0.70.5] - 2026-04-27
+
+## [0.70.4] - 2026-04-27
+
+## [0.70.3] - 2026-04-27
+
+## [0.70.2] - 2026-04-24
+
+## [0.70.1] - 2026-04-24
+
+## [0.70.0] - 2026-04-23
+
+## [0.69.0] - 2026-04-22
+
+### Breaking Changes
+
+- Migrated public TypeBox-facing types and examples from `@sinclair/typebox` 0.34.x to `typebox` 1.x. Install and import from `typebox` instead of relying on `@sinclair/typebox` transitively ([#3112](https://github.com/badlogic/pi-mono/issues/3112))
+
+### Added
+
+- Added `terminate: true` tool-result hints to skip the automatic follow-up LLM call when every finalized tool result in the current batch opts into early termination ([#3525](https://github.com/badlogic/pi-mono/issues/3525))
+
+## [0.68.1] - 2026-04-22
+
+### Fixed
+
+- Fixed `streamProxy()` to preserve the proxy-safe serializable subset of stream options, including session, transport, retry-delay, metadata, header, cache-retention, and thinking-budget settings ([#3512](https://github.com/badlogic/pi-mono/issues/3512))
+- Fixed parallel tool execution to emit `tool_execution_end` as soon as each tool is finalized, while still emitting persisted tool-result messages in assistant source order ([#3503](https://github.com/badlogic/pi-mono/issues/3503))
+
+## [0.68.0] - 2026-04-20
+
+### Changed
+
+- Clarified parallel tool execution ordering docs to specify that final tool lifecycle and tool-result artifacts are emitted in tool completion order.
+
+## [0.67.68] - 2026-04-17
+
+## [0.67.67] - 2026-04-17
+
+### Fixed
+
+- Fixed parallel tool-call finalization to convert `afterToolCall` hook throws into error tool results instead of aborting the batch ([#3084](https://github.com/badlogic/pi-mono/issues/3084))
+
+## [0.67.6] - 2026-04-16
+
+## [0.67.5] - 2026-04-16
+
+## [0.67.4] - 2026-04-16
+
+## [0.67.3] - 2026-04-15
+
+## [0.67.2] - 2026-04-14
+
+## [0.67.1] - 2026-04-13
+
+## [0.67.0] - 2026-04-13
+
+## [0.66.1] - 2026-04-08
+
+## [0.66.0] - 2026-04-08
+
+## [0.65.2] - 2026-04-06
+
+## [0.65.1] - 2026-04-05
+
+## [0.65.0] - 2026-04-03
+
+### Breaking Changes
+
+- `AgentState` has been reshaped:
+  - `streamMessage` was renamed to `streamingMessage`
+  - `error` was renamed to `errorMessage`
+  - `isStreaming`, `streamingMessage`, `pendingToolCalls`, and `errorMessage` are now readonly in the public API
+  - `pendingToolCalls` is now typed as `ReadonlySet<string>`
+  - `tools` and `messages` are now accessor properties, and assigning either field copies the provided top-level array instead of preserving array identity
+- `AgentOptions.initialState` no longer accepts runtime-owned fields. Remove `isStreaming`, `streamingMessage`, `pendingToolCalls`, and `errorMessage` from `initialState` values.
+- Removed `Agent` mutator methods in favor of direct property access:
+  - `agent.setSystemPrompt(value)` -> `agent.state.systemPrompt = value`
+  - `agent.setModel(model)` -> `agent.state.model = model`
+  - `agent.setThinkingLevel(level)` -> `agent.state.thinkingLevel = level`
+  - `agent.setTools(tools)` -> `agent.state.tools = tools`
+  - `agent.replaceMessages(messages)` -> `agent.state.messages = messages`
+  - `agent.appendMessage(message)` -> `agent.state.messages.push(message)`
+  - `agent.clearMessages()` -> `agent.state.messages = []`
+  - `agent.setToolExecution(mode)` -> `agent.toolExecution = mode`
+  - `agent.setBeforeToolCall(fn)` -> `agent.beforeToolCall = fn`
+  - `agent.setAfterToolCall(fn)` -> `agent.afterToolCall = fn`
+  - `agent.setTransport(transport)` -> `agent.transport = transport`
+- Removed queue mode getter/setter methods in favor of properties:
+  - `agent.setSteeringMode(mode)` -> `agent.steeringMode = mode`
+  - `agent.getSteeringMode()` -> `agent.steeringMode`
+  - `agent.setFollowUpMode(mode)` -> `agent.followUpMode = mode`
+  - `agent.getFollowUpMode()` -> `agent.followUpMode`
+- `Agent.subscribe()` listeners are now awaited and receive the active `AbortSignal`:
+  - `agent.subscribe((event) => { ... })` -> `agent.subscribe(async (event, signal) => { ... })`
+  - `agent_end` is now the final emitted event for a run, but not the idle boundary
+  - `agent.waitForIdle()`, `agent.prompt(...)`, and `agent.continue()` now settle only after awaited `agent_end` listeners finish
+  - `agent.state.isStreaming` remains `true` until that settlement completes
+
+## [0.64.0] - 2026-03-29
+
+### Added
+
+- Added `AgentTool.prepareArguments` hook to prepare raw tool call arguments before schema validation, enabling compatibility shims for resumed sessions with outdated tool schemas
+
+## [0.63.2] - 2026-03-29
 
 ### Added
 

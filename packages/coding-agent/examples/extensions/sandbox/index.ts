@@ -5,8 +5,12 @@
  * restrictions on bash commands at the OS level (sandbox-exec on macOS,
  * bubblewrap on Linux).
  *
+ * Note: this example intentionally overrides the built-in `bash` tool to show
+ * how built-in tools can be replaced. Alternatively, you could sandbox `bash`
+ * via `tool_call` input mutation without replacing the tool.
+ *
  * Config files (merged, project takes precedence):
- * - ~/.pi/agent/sandbox.json (global)
+ * - ~/.pi/agent/extensions/sandbox.json (global)
  * - <cwd>/.pi/sandbox.json (project-local)
  *
  * Example .pi/sandbox.json:

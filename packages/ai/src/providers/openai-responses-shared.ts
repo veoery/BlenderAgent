@@ -73,6 +73,10 @@ function getResponseMessagePhase(message: ResponseOutputMessage): TextSignatureV
 
 export interface OpenAIResponsesStreamOptions {
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
+	resolveServiceTier?: (
+		responseServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
+		requestServiceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
+	) => ResponseCreateParamsStreaming["service_tier"] | undefined;
 	applyServiceTierPricing?: (
 		usage: Usage,
 		serviceTier: ResponseCreateParamsStreaming["service_tier"] | undefined,
@@ -157,13 +161,10 @@ export function convertResponsesMessages<TApi extends Api>(
 						image_url: `data:${item.mimeType};base64,${item.data}`,
 					} satisfies ResponseInputImage;
 				});
-				const filteredContent = !model.input.includes("image")
-					? content.filter((c) => c.type !== "input_image")
-					: content;
-				if (filteredContent.length === 0) continue;
+				if (content.length === 0) continue;
 				messages.push({
 					role: "user",
-					content: filteredContent,
+					content,
 				});
 			}
 		} else if (msg.role === "assistant") {
@@ -417,8 +418,21 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 		} else if (event.type === "response.function_call_arguments.done") {
 			if (currentItem?.type === "function_call" && currentBlock?.type === "toolCall") {
+				const previousPartialJson = currentBlock.partialJson;
 				currentBlock.partialJson = event.arguments;
 				currentBlock.arguments = parseStreamingJson(currentBlock.partialJson);
+
+				if (event.arguments.startsWith(previousPartialJson)) {
+					const delta = event.arguments.slice(previousPartialJson.length);
+					if (delta.length > 0) {
+						stream.push({
+							type: "toolcall_delta",
+							contentIndex: blockIndex(),
+							delta,
+							partial: output,
+						});
+					}
+				}
 			}
 		} else if (event.type === "response.output_item.done") {
 			const item = event.item;
@@ -448,12 +462,22 @@ export async function processResponsesStream<TApi extends Api>(
 					currentBlock?.type === "toolCall" && currentBlock.partialJson
 						? parseStreamingJson(currentBlock.partialJson)
 						: parseStreamingJson(item.arguments || "{}");
-				const toolCall: ToolCall = {
-					type: "toolCall",
-					id: `${item.call_id}|${item.id}`,
-					name: item.name,
-					arguments: args,
-				};
+
+				let toolCall: ToolCall;
+				if (currentBlock?.type === "toolCall") {
+					// Finalize in-place and strip the scratch buffer so replay only
+					// carries parsed arguments.
+					currentBlock.arguments = args;
+					delete (currentBlock as { partialJson?: string }).partialJson;
+					toolCall = currentBlock;
+				} else {
+					toolCall = {
+						type: "toolCall",
+						id: `${item.call_id}|${item.id}`,
+						name: item.name,
+						arguments: args,
+					};
+				}
 
 				currentBlock = null;
 				stream.push({ type: "toolcall_end", contentIndex: blockIndex(), toolCall, partial: output });
@@ -477,7 +501,9 @@ export async function processResponsesStream<TApi extends Api>(
 			}
 			calculateCost(model, output.usage);
 			if (options?.applyServiceTierPricing) {
-				const serviceTier = response?.service_tier ?? options.serviceTier;
+				const serviceTier = options.resolveServiceTier
+					? options.resolveServiceTier(response?.service_tier, options.serviceTier)
+					: (response?.service_tier ?? options.serviceTier);
 				options.applyServiceTierPricing(output.usage, serviceTier);
 			}
 			// Map status to stop reason
