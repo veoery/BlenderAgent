@@ -178,7 +178,7 @@ describe("FooterDataProvider reftable branch detection", () => {
 			const onBranchChange = vi.fn();
 			provider.onBranchChange(onBranchChange);
 
-			writeFileSync(join(reftableDir, "tables.list"), "1\n");
+			writeFileSync(join(reftableDir, "tables.list"), "updated-table-list\n");
 			await waitFor(() => vi.mocked(execFile).mock.calls.length === 1);
 
 			expect(vi.mocked(execFile)).toHaveBeenCalledTimes(1);
@@ -199,7 +199,7 @@ describe("FooterDataProvider reftable branch detection", () => {
 			expect(provider.getGitBranch()).toBe("main");
 			vi.mocked(execFile).mockClear();
 
-			writeFileSync(join(reftableDir, "tables.list"), "1\n");
+			writeFileSync(join(reftableDir, "tables.list"), "updated-table-list\n");
 			writeFileSync(join(reftableDir, "tables.list"), "2\n");
 			writeFileSync(join(reftableDir, "tables.list"), "3\n");
 			await waitFor(() => vi.mocked(execFile).mock.calls.length === 1);
