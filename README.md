@@ -6,7 +6,7 @@ Instead of asking an assistant to only describe Blender steps, you can ask it to
 
 Vibe Blender is based on the [pi monorepo](https://github.com/badlogic/pi-mono).
 
-<video src="assets/demo.mp4" controls width="100%"></video>
+![Vibe Blender demo](assets/demo.gif)
 
 [Watch the demo](assets/demo.mp4)
 
@@ -82,13 +82,13 @@ Use /skill:blender-edit with workspace=outputs/<task_name> and make the tabletop
 
 ```text
 # Select some objects in Blender first then prompt the agent:
-Remove the seleted objects.
+Remove the selected objects.
 ```
 
 Inspect what is in a scene:
 
 ```text
-Use /skill:blender-analyze with workspace=outputs/<task_name>> and summarize the objects, lights, cameras, and materials.
+Use /skill:blender-analyze with workspace=outputs/<task_name> and summarize the objects, lights, cameras, and materials.
 ```
 
 Render from the current Blender view:
