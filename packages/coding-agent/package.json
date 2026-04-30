@@ -1,6 +1,6 @@
 {
 	"name": "vibe-blender",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "AI-assisted Blender workspace for creating, editing, inspecting, and rendering 3D scenes",
 	"type": "module",
 	"piConfig": {
