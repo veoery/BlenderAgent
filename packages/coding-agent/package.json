@@ -1,11 +1,11 @@
 {
-	"name": "@mariozechner/pi-coding-agent",
-	"version": "0.63.1",
-	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
+	"name": "vibe-blender",
+	"version": "0.1.0",
+	"description": "AI-assisted Blender workspace for creating, editing, inspecting, and rendering 3D scenes",
 	"type": "module",
 	"piConfig": {
 		"name": "vibe-blender",
-		"configDir": ".pi"
+		"configDir": ".vibe-blender"
 	},
 	"bin": {
 		"vibe-blender": "dist/cli.js"
@@ -80,18 +80,18 @@
 		"vitest": "^3.2.4"
 	},
 	"keywords": [
-		"coding-agent",
+		"blender",
+		"3d",
 		"ai",
 		"llm",
 		"cli",
-		"tui",
-		"agent"
+		"tui"
 	],
-	"author": "Mario Zechner",
+	"author": "Yizhuo Ethan Di",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/badlogic/pi-mono.git",
+		"url": "git+https://github.com/veoery/BlenderAgent.git",
 		"directory": "packages/coding-agent"
 	},
 	"engines": {
