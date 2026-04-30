@@ -137,7 +137,7 @@ async function walkDirectoryWithFd(
 		"f",
 		"--type",
 		"d",
-		"--full-path",
+		"--follow",
 		"--hidden",
 		"--exclude",
 		".git",
@@ -146,6 +146,10 @@ async function walkDirectoryWithFd(
 		"--exclude",
 		".git/**",
 	];
+
+	if (toDisplayPath(query).includes("/")) {
+		args.push("--full-path");
+	}
 
 	if (query) {
 		args.push(buildFdPathQuery(query));
@@ -218,12 +222,15 @@ export interface AutocompleteItem {
 	description?: string;
 }
 
+type Awaitable<T> = T | Promise<T>;
+
 export interface SlashCommand {
 	name: string;
 	description?: string;
+	argumentHint?: string;
 	// Function to get argument completions for this command
 	// Returns null if no argument completion is available
-	getArgumentCompletions?(argumentPrefix: string): AutocompleteItem[] | null;
+	getArgumentCompletions?(argumentPrefix: string): Awaitable<AutocompleteItem[] | null>;
 }
 
 export interface AutocompleteSuggestions {
@@ -254,6 +261,9 @@ export interface AutocompleteProvider {
 		cursorLine: number;
 		cursorCol: number;
 	};
+
+	// Check if file completion should trigger for explicit Tab completion
+	shouldTriggerFileCompletion?(lines: string[], cursorLine: number, cursorCol: number): boolean;
 }
 
 // Combined provider that handles both slash commands and file paths
@@ -262,11 +272,7 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	private basePath: string;
 	private fdPath: string | null;
 
-	constructor(
-		commands: (SlashCommand | AutocompleteItem)[] = [],
-		basePath: string = process.cwd(),
-		fdPath: string | null = null,
-	) {
+	constructor(commands: (SlashCommand | AutocompleteItem)[] = [], basePath: string, fdPath: string | null = null) {
 		this.commands = commands;
 		this.basePath = basePath;
 		this.fdPath = fdPath;
@@ -301,11 +307,17 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 
 			if (spaceIndex === -1) {
 				const prefix = textBeforeCursor.slice(1);
-				const commandItems = this.commands.map((cmd) => ({
-					name: "name" in cmd ? cmd.name : cmd.value,
-					label: "name" in cmd ? cmd.name : cmd.label,
-					description: cmd.description,
-				}));
+				const commandItems = this.commands.map((cmd) => {
+					const name = "name" in cmd ? cmd.name : cmd.value;
+					const hint = "argumentHint" in cmd && cmd.argumentHint ? cmd.argumentHint : undefined;
+					const desc = cmd.description ?? "";
+					const fullDesc = hint ? (desc ? `${hint} — ${desc}` : hint) : desc;
+					return {
+						name,
+						label: name,
+						description: fullDesc || undefined,
+					};
+				});
 
 				const filtered = fuzzyFilter(commandItems, prefix, (item) => item.name).map((item) => ({
 					value: item.name,
@@ -332,8 +344,8 @@ export class CombinedAutocompleteProvider implements AutocompleteProvider {
 				return null;
 			}
 
-			const argumentSuggestions = command.getArgumentCompletions(argumentText);
-			if (!argumentSuggestions || argumentSuggestions.length === 0) {
+			const argumentSuggestions = await command.getArgumentCompletions(argumentText);
+			if (!Array.isArray(argumentSuggestions) || argumentSuggestions.length === 0) {
 				return null;
 			}
 

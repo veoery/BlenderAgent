@@ -1,10 +1,15 @@
 import { existsSync } from "node:fs";
+import type { TObject } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
 import { getBuiltInBlenderExtensionFactories, isVibeBlenderApp } from "../src/blender/extension.js";
 import { getBundledBlenderSkillsDir } from "../src/blender/runtime.js";
 import { createEventBus } from "../src/core/event-bus.js";
 import type { BeforeAgentStartEventResult, ExtensionContext } from "../src/core/extensions/index.js";
 import { createExtensionRuntime, loadExtensionFromFactory } from "../src/core/extensions/loader.js";
+
+function getToolProperties(parameters: unknown): Record<string, unknown> {
+	return (parameters as TObject).properties as Record<string, unknown>;
+}
 
 describe("built-in blender extension", () => {
 	afterEach(() => {
@@ -45,7 +50,7 @@ describe("built-in blender extension", () => {
 		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
 		const sessionContextTool = extension.tools.get("blender_session_context");
 		expect(sessionContextTool).toBeDefined();
-		const properties = sessionContextTool?.definition.parameters.properties as Record<string, unknown>;
+		const properties = getToolProperties(sessionContextTool?.definition.parameters);
 		expect(properties.workspace).toBeDefined();
 		expect(properties.include).toBeDefined();
 		expect(JSON.stringify(properties.include)).toContain("selection");
@@ -58,7 +63,7 @@ describe("built-in blender extension", () => {
 		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
 		const sceneInfoTool = extension.tools.get("blender_scene_info");
 		expect(sceneInfoTool).toBeDefined();
-		const properties = sceneInfoTool?.definition.parameters.properties as Record<string, unknown>;
+		const properties = getToolProperties(sceneInfoTool?.definition.parameters);
 		expect(properties.categories).toBeDefined();
 		expect(JSON.stringify(properties.categories)).toContain("views");
 		expect(JSON.stringify(properties.categories)).toContain("cameraSettings");
@@ -72,7 +77,7 @@ describe("built-in blender extension", () => {
 		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
 		const saveViewTool = extension.tools.get("blender_save_view");
 		expect(saveViewTool).toBeDefined();
-		const properties = saveViewTool?.definition.parameters.properties as Record<string, unknown>;
+		const properties = getToolProperties(saveViewTool?.definition.parameters);
 		expect(properties.camera_name).toBeDefined();
 		expect(JSON.stringify(properties.source)).toContain("current Blender UI view");
 	});
@@ -83,7 +88,7 @@ describe("built-in blender extension", () => {
 		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
 		const renderTool = extension.tools.get("blender_render");
 		expect(renderTool).toBeDefined();
-		const properties = renderTool?.definition.parameters.properties as Record<string, unknown>;
+		const properties = getToolProperties(renderTool?.definition.parameters);
 		expect(properties.renderMethod).toBeDefined();
 		expect(properties.viewSource).toBeDefined();
 		expect(properties.viewportShading).toBeDefined();
@@ -99,7 +104,7 @@ describe("built-in blender extension", () => {
 		const extension = await loadExtensionFromFactory(factory, process.cwd(), createEventBus(), runtime, "<blender>");
 		const critiqueTool = extension.tools.get("blender_log_critique");
 		expect(critiqueTool).toBeDefined();
-		const properties = critiqueTool?.definition.parameters.properties as Record<string, unknown>;
+		const properties = getToolProperties(critiqueTool?.definition.parameters);
 		expect(properties.viewAdequacy).toBeDefined();
 		expect(JSON.stringify(properties.viewAdequacy)).toContain("render view");
 	});

@@ -8,9 +8,9 @@ import traceback
 import bpy
 
 
-BRIDGE_DIR = os.environ.get("VIBE_BLENDER_BRIDGE_DIR") or os.path.join(
+BRIDGE_DIR = os.environ.get("VIBE_BLENDER_BLENDER_BRIDGE_DIR") or os.environ.get("VIBE_BLENDER_BRIDGE_DIR") or os.path.join(
     os.path.expanduser("~"),
-    ".pi",
+    ".vibe-blender",
     "agent",
     "blender-bridge",
 )

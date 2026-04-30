@@ -62,3 +62,6 @@ references/
 *.html
 blenderbench/
 plans/
+.pi/hf-sessions/
+.pi/hf-sessions-backup/
+collect.sh

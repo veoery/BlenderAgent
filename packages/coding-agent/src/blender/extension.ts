@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 import { APP_NAME } from "../config.js";
 import type { ExtensionFactory } from "../core/extensions/index.js";
 import {
